@@ -1,0 +1,30 @@
+name: Deploy Backend on EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup SSH Agent with EC2 Key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
+      - name: Sync Files to EC2
+        run: |
+          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ubuntu@44.211.135.47:/home/ubuntu/b-way-backend/
+
+      - name: Install & Restart PM2 on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@44.211.135.47'
+            cd /home/ubuntu/b-way-backend &&
+            npm install &&
+            npm run restart
+          '
