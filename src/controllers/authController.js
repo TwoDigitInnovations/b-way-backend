@@ -48,6 +48,7 @@ module.exports = {
       }
 
       const user = await User.findOne({ email });
+      console.log(user)
       if (!user) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
