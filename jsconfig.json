@@ -11,6 +11,7 @@
         "@routes/*": ["src/routes/*"],
         "@tests/*": ["src/tests/*"],
         "@assets/*": ["src/assets/*"],
+        "@helpers/*": ["src/helpers/*"],
       }
     },
     "include": ["src/**/*.js"]

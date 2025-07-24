@@ -1,4 +1,4 @@
-'use script';
+'use strict';
 
 module.exports = (res, info) => {
     return res.status(401).send({

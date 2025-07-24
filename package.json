@@ -46,7 +46,8 @@
     "@models": "src/models",
     "@routes": "src/routes",
     "@services": "src/services",
-    "@responses": "src/responses",
-    "@utils": "src/utils"
+    "@responses": "src/helpers/responses",
+    "@utils": "src/utils",
+    "@helpers": "src/helpers"
   }
 }
