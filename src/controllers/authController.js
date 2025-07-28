@@ -88,5 +88,36 @@ module.exports = {
       response.error(res, error);
     }
   },
+  changePassword: async (req, res) => {
+    try {
+      const { oldPassword, newPassword } = req.body;
+      const userId = req.user.id;
 
+      if (!oldPassword || !newPassword) {
+        return response.badReq(res, { message: 'Old and new passwords are required' });
+      }
+
+      if (newPassword.length < 6) {
+        return response.badReq(res, { message: 'New password must be at least 6 characters long' });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return response.notFound(res, { message: 'User not found' });
+      }
+
+      const isMatch = await bcrypt.compare(oldPassword, user.password);
+      if (!isMatch) {
+        return response.unAuthorize(res, { message: 'Old password is incorrect' });
+      }
+
+      user.password = await bcrypt.hash(newPassword, 10);
+      await user.save();
+
+      response.ok(res, { message: 'Password changed successfully' });
+    } catch (error) {
+      console.error(error);
+      response.error(res, error);
+    }
+  },
 };
