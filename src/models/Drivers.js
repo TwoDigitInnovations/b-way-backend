@@ -23,8 +23,8 @@ const driverSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Active', 'Inactive', 'Suspended', 'On-Delivery', 'Off-Duty'],
-      default: 'Active',
+      enum: ['Pending', 'Active', 'Inactive', 'Suspended', 'On-Delivery', 'Off-Duty'],
+      default: 'Pending',
     },
   },
   {

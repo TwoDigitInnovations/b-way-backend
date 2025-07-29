@@ -1,12 +1,18 @@
-const generateOrderId = require('../helpers/generateOrderId');
 const mongoose = require('mongoose');
+
+const counterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+});
+
+const Counter = mongoose.model('Counter', counterSchema);
 
 const orderSchema = new mongoose.Schema(
   {
     orderId: {
       type: String,
-      // required: true,
       unique: true,
+      index: true,
     },
     items: {
       type: String,
@@ -31,7 +37,8 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
     route: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Route',
       required: true,
     },
     status: {
@@ -43,7 +50,7 @@ const orderSchema = new mongoose.Schema(
         'Return Created',
         'Invoice Generated',
         'Pending',
-        "Picked Up"
+        'Picked Up',
       ],
       default: 'Pending',
     },
@@ -53,24 +60,20 @@ const orderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  },
+  }
 );
 
 orderSchema.pre('save', async function (next) {
   try {
     if (this.isNew) {
-      const lastOrder = await Order.findOne().sort({ createdAt: -1 });
+      const counter = await Counter.findByIdAndUpdate(
+        { _id: 'orderId' },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+      );
 
-      if (lastOrder && lastOrder.orderId) {
-        const lastNumber = parseInt(lastOrder.orderId.replace(/\D/g, ''), 10);
-        this.orderId = `ORD-${String(lastNumber + 1).padStart(3, '0')}`;
-      } else {
-        this.orderId = generateOrderId(this._id);
-      }
-    } else if (this.isModified('orderId')) {
-      this.orderId = generateOrderId(this._id);
+      this.orderId = `ORD-${String(counter.seq).padStart(6, '0')}`;
     }
-
     next();
   } catch (err) {
     next(err);

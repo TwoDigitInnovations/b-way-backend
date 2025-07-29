@@ -8,17 +8,31 @@ module.exports = {
         items,
         qty,
         pickupLocation,
+        pickupCity,
+        pickupState,
+        pickupZipcode,
         deliveryLocation,
+        deliveryCity,
+        deliveryState,
+        deliveryZipcode,
         assignedDriver,
         route,
+        eta,
       } = req.body;
       const order = new Order({
         items,
         qty,
         pickupLocation,
+        pickupCity,
+        pickupState,
+        pickupZipcode,
         deliveryLocation,
+        deliveryCity,
+        deliveryState,
+        deliveryZipcode,
         assignedDriver,
         route,
+        eta,
       });
 
       await order.save();
@@ -38,9 +52,11 @@ module.exports = {
     try {
       const orders = await Order.find()
         .populate('assignedDriver', 'name email _id')
+        .populate('route', 'routeName')
         .select('-__v')
+        .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
+        .limit(limitNum)
         .lean();
 
       orders.forEach((order, index) => {
@@ -48,6 +64,10 @@ module.exports = {
         order.assignedDriver = order.assignedDriver || {
           name: '',
           email: '',
+          _id: null,
+        };
+        order.route = order.route || {
+          routeName: '',
           _id: null,
         };
       });
@@ -63,6 +83,70 @@ module.exports = {
         limit: limitNum,
         data: orders,
       });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  getOrderById: async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.id).populate(
+        'assignedDriver',
+        'name email',
+      );
+      if (!order) {
+        return res
+          .status(404)
+          .json({ status: false, message: 'Order not found' });
+      }
+      res.status(200).json({ status: true, data: order });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  updateOrder: async (req, res) => {
+    try {
+      const {
+        items,
+        qty,
+        pickupLocation,
+        deliveryLocation,
+        assignedDriver,
+        route,
+      } = req.body;
+      const order = await Order.findByIdAndUpdate(
+        req.params.id,
+        { items, qty, pickupLocation, deliveryLocation, assignedDriver, route },
+        { new: true },
+      );
+
+      if (!order) {
+        return res
+          .status(404)
+          .json({ status: false, message: 'Order not found' });
+      }
+
+      res
+        .status(200)
+        .json({
+          status: true,
+          message: 'Order updated successfully',
+          data: order,
+        });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  deleteOrder: async (req, res) => {
+    try {
+      const order = await Order.findByIdAndDelete(req.params.id);
+      if (!order) {
+        return res
+          .status(404)
+          .json({ status: false, message: 'Order not found' });
+      }
+      res
+        .status(200)
+        .json({ status: true, message: 'Order deleted successfully' });
     } catch (error) {
       res.status(500).json({ status: false, message: error.message });
     }
