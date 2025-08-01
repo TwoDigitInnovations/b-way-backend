@@ -15,24 +15,33 @@ module.exports = {
         deliveryCity,
         deliveryState,
         deliveryZipcode,
-        assignedDriver,
-        route,
-        eta,
       } = req.body;
+
+      const user = req.user._id;
+
+      if (!items || !qty || !deliveryLocation) {
+        return res.status(400).json({
+          status: false,
+          message: 'Missing required fields',
+        });
+      }
+
       const order = new Order({
         items,
         qty,
-        pickupLocation,
-        pickupCity,
-        pickupState,
-        pickupZipcode,
-        deliveryLocation,
-        deliveryCity,
-        deliveryState,
-        deliveryZipcode,
-        assignedDriver,
-        route,
-        eta,
+        pickupLocation: {
+          address: pickupLocation,
+          city: pickupCity,
+          state: pickupState,
+          zipcode: pickupZipcode,
+        },
+        deliveryLocation: {
+          address: deliveryLocation,
+          city: deliveryCity,
+          state: deliveryState,
+          zipcode: deliveryZipcode,
+        },
+        user,
       });
 
       await order.save();
@@ -40,6 +49,7 @@ module.exports = {
         .status(201)
         .json({ status: true, message: 'Order created successfully', order });
     } catch (error) {
+      console.error('Error creating order:', error);
       res.status(500).json({ status: false, message: error.message });
     }
   },
@@ -51,7 +61,6 @@ module.exports = {
 
     try {
       const orders = await Order.find()
-        .populate('assignedDriver', 'name email _id')
         .populate('route', 'routeName')
         .select('-__v')
         .sort({ createdAt: -1 })
@@ -61,15 +70,6 @@ module.exports = {
 
       orders.forEach((order, index) => {
         order.index = skip + index + 1;
-        order.assignedDriver = order.assignedDriver || {
-          name: '',
-          email: '',
-          _id: null,
-        };
-        order.route = order.route || {
-          routeName: '',
-          _id: null,
-        };
       });
 
       const totalOrders = await Order.countDocuments();
@@ -89,10 +89,9 @@ module.exports = {
   },
   getOrderById: async (req, res) => {
     try {
-      const order = await Order.findById(req.params.id).populate(
-        'assignedDriver',
-        'name email',
-      );
+      const order = await Order.findById(req.params.id)
+        .populate('route', 'routeName')
+        .select('-__v');
       if (!order) {
         return res
           .status(404)
@@ -110,12 +109,13 @@ module.exports = {
         qty,
         pickupLocation,
         deliveryLocation,
-        assignedDriver,
         route,
+        status,
+        eta
       } = req.body;
       const order = await Order.findByIdAndUpdate(
         req.params.id,
-        { items, qty, pickupLocation, deliveryLocation, assignedDriver, route },
+        { items, qty, pickupLocation, deliveryLocation, route, status, eta },
         { new: true },
       );
 
@@ -125,13 +125,11 @@ module.exports = {
           .json({ status: false, message: 'Order not found' });
       }
 
-      res
-        .status(200)
-        .json({
-          status: true,
-          message: 'Order updated successfully',
-          data: order,
-        });
+      res.status(200).json({
+        status: true,
+        message: 'Order updated successfully',
+        data: order,
+      });
     } catch (error) {
       res.status(500).json({ status: false, message: error.message });
     }
@@ -151,4 +149,23 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
+  getOrdersByUser: async (req, res) => {
+    try {
+      const userId = req.user._id;
+      const orders = await Order.find({ user: userId })
+        .populate('route', 'routeName')
+        .select('-__v')
+        .sort({ createdAt: -1 });
+
+      if (!orders || orders.length === 0) {
+        return res
+          .status(404)
+          .json({ status: false, message: 'No orders found for this user' });
+      }
+
+      res.status(200).json({ status: true, data: orders });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  }
 };

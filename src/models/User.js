@@ -32,6 +32,27 @@ const userSchema = new mongoose.Schema(
       enum: ['USER', 'ADMIN', "DRIVER", "DISPATCHER"],
       default: 'USER',
     },
+    // For hospital(user) to save their details
+    primaryContact: {
+      type: String,
+      required: false,
+    },
+    address: {
+      type: String,
+      required: false,
+    },
+    city: {
+      type: String,
+      required: false,
+    },
+    state: {
+      type: String,
+      required: false,
+    },
+    zipcode: {
+      type: String,
+      required: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

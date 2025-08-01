@@ -6,18 +6,47 @@ const routeSchema = new mongoose.Schema({
     required: true
   },
   startLocation: {
-    type: String,
-    required: true
+    address: {
+      type: String,
+      required: true
+    },
+    city: {
+      type: String,
+      required: true
+    },
+    state: {
+      type: String,
+      required: true
+    },
+    zipCode: {
+      type: String,
+      required: true
+    }
   },
   endLocation: {
-    type: String,
-    required: true
+    address: {
+      type: String,
+      required: true
+    },
+    city: {
+      type: String,
+      required: true
+    },
+    state: {
+      type: String,
+      required: true
+    },
+    zipCode: {
+      type: String,
+      required: true
+    }
   },
   stops: {
     type: [String]
   },
   assignedDriver: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
   eta: {

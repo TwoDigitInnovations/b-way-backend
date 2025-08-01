@@ -14,6 +14,11 @@ const orderSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
     items: {
       type: String,
       required: true,
@@ -24,22 +29,50 @@ const orderSchema = new mongoose.Schema(
       min: 1,
     },
     pickupLocation: {
-      type: String,
-      required: true,
+      address: {
+        type: String,
+        required: false,
+      },
+      city: {
+        type: String,
+        required: false,
+      },
+      state: {
+        type: String,
+        required: false,
+      },
+      zipcode: {
+        type: String,
+        required: false,
+      },
     },
     deliveryLocation: {
-      type: String,
-      required: true,
+      address: {
+        type: String,
+        required: true,
+      },
+      city: {
+        type: String,
+        required: true,
+      },
+      state: {
+        type: String,
+        required: true,
+      },
+      zipcode: {
+        type: String,
+        required: true,
+      },
     },
-    assignedDriver: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    // assignedDriver: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: 'User',
+    //   required: true,
+    // },
     route: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Route',
-      required: true,
+      required: false,
     },
     status: {
       type: String,
@@ -56,11 +89,11 @@ const orderSchema = new mongoose.Schema(
     },
     eta: {
       type: String,
-    },
+    }
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 orderSchema.pre('save', async function (next) {
@@ -69,7 +102,7 @@ orderSchema.pre('save', async function (next) {
       const counter = await Counter.findByIdAndUpdate(
         { _id: 'orderId' },
         { $inc: { seq: 1 } },
-        { new: true, upsert: true }
+        { new: true, upsert: true },
       );
 
       this.orderId = `ORD-${String(counter.seq).padStart(6, '0')}`;
