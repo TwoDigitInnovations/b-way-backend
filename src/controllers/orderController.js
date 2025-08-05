@@ -62,6 +62,7 @@ module.exports = {
     try {
       const orders = await Order.find()
         .populate('route', 'routeName')
+        .populate('user', 'name email role')
         .select('-__v')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -91,6 +92,7 @@ module.exports = {
     try {
       const order = await Order.findById(req.params.id)
         .populate('route', 'routeName')
+        .populate('user', 'name email role')
         .select('-__v');
       if (!order) {
         return res
@@ -150,12 +152,28 @@ module.exports = {
     }
   },
   getOrdersByUser: async (req, res) => {
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const skip = (pageNum - 1) * limitNum;
+
     try {
       const userId = req.user._id;
       const orders = await Order.find({ user: userId })
         .populate('route', 'routeName')
+        .populate('user', 'name email role')
         .select('-__v')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean();
+
+      orders.forEach((order, index) => {
+        order.index = skip + index + 1;
+      });
+
+      const totalOrders = await Order.countDocuments({ user: userId });
+      const totalPages = Math.ceil(totalOrders / limitNum);
 
       if (!orders || orders.length === 0) {
         return res
@@ -163,7 +181,14 @@ module.exports = {
           .json({ status: false, message: 'No orders found for this user' });
       }
 
-      res.status(200).json({ status: true, data: orders });
+      res.status(200).json({
+        status: true,
+        currentPage: pageNum,
+        totalPages,
+        totalOrders,
+        limit: limitNum,
+        data: orders,
+      });
     } catch (error) {
       res.status(500).json({ status: false, message: error.message });
     }
