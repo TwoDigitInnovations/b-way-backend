@@ -353,4 +353,52 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
-};
+
+  markOrderAsDelivered: async (req, res) => {
+    try {
+      const { orderId } = req.params;
+
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({
+          status: false,
+          message: 'Order not found',
+        });
+      }
+
+      order.status = 'Delivered';
+      await order.save();
+
+      res.status(200).json({
+        status: true,
+        message: 'Order marked as delivered successfully',
+      });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+
+  markOrderAsPicked: async (req, res) => {
+    try {
+      const { orderId } = req.params;
+
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({
+          status: false,
+          message: 'Order not found',
+        });
+      }
+
+      order.status = 'Picked Up';
+      await order.save();
+
+      res.status(200).json({
+        status: true,
+        message: 'Order marked as picked up successfully',
+      });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+}

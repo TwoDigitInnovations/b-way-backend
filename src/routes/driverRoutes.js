@@ -10,5 +10,8 @@ router.get("/:driverId/routes", driverController.getDriverRoutes);
 router.get("/:driverId/orders", driverController.getDriverOrders);
 router.post("/:driverId/assign-route", driverController.assignRouteToDriver);
 router.post("/:driverId/unassign-route", driverController.unassignRouteFromDriver);
+//orders related api
+router.post("/:orderId/mark-order-delivered", driverController.markOrderAsDelivered);
+router.post("/:orderId/mark-order-picked", driverController.markOrderAsPicked);
 
 module.exports = router;
