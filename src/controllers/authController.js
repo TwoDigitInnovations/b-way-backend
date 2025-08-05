@@ -141,10 +141,8 @@ module.exports = {
         email,
         phone,
         primaryContact,
-        address,
-        city,
-        state,
-        zipcode,
+        billing_Address,
+        delivery_Address,
       } = req.body;
       const userId = req.user._id;
 
@@ -159,10 +157,8 @@ module.exports = {
           email,
           phone,
           primaryContact,
-          address,
-          city,
-          state,
-          zipcode,
+          billing_Address,
+          delivery_Address,
         },
         { new: true, runValidators: true },
       ).select('-password');

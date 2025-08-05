@@ -35,11 +35,23 @@ module.exports = {
 
       const user = req.user._id;
 
-      if (!items || !qty || !deliveryLocation) {
+      if (!items || !qty) {
         return res.status(400).json({
           status: false,
           message: 'Missing required fields',
         });
+      }
+
+      let userDetails;
+
+      if (user) {
+        userDetails = await User.findById(user).select('delivery_Address');
+        if (!userDetails) {
+          return res.status(404).json({
+            status: false,
+            message: 'User not found',
+          });
+        }
       }
 
       const order = new Order({
@@ -51,12 +63,18 @@ module.exports = {
           state: pickupState,
           zipcode: pickupZipcode,
         },
-        deliveryLocation: {
+        deliveryLocation: userDetails.delivery_Address || {
           address: deliveryLocation,
           city: deliveryCity,
           state: deliveryState,
           zipcode: deliveryZipcode,
         },
+        // deliveryLocation: {
+        //   address: deliveryLocation,
+        //   city: deliveryCity,
+        //   state: deliveryState,
+        //   zipcode: deliveryZipcode,
+        // },
         user,
       });
 
