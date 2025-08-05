@@ -46,7 +46,7 @@ const routeSchema = new mongoose.Schema({
   },
   assignedDriver: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Driver',
     required: true
   },
   eta: {

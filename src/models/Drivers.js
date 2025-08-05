@@ -17,10 +17,10 @@ const driverSchema = new mongoose.Schema(
       enum: ['Van', 'Truck', 'Bike', 'Car', 'Other'],
       required: true,
     },
-    assignedRoute: {
+    assignedRoute: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Route',
-    },
+    }],
     status: {
       type: String,
       enum: ['Pending', 'Active', 'Inactive', 'Suspended', 'On-Delivery', 'Off-Duty'],

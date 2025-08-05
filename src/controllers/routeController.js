@@ -1,4 +1,5 @@
 const Routes = require('@models/Routes');
+const Driver = require('@models/Drivers');
 
 module.exports = {
   createRoute: async (req, res) => {
@@ -24,6 +25,20 @@ module.exports = {
         status: 'Active',
       });
 
+      if (assignedDriver) {
+        const driver = await Driver.findById(assignedDriver);
+        if (!driver) {
+          return res
+            .status(404)
+            .json({ status: false, message: 'Driver not found' });
+        }
+
+        if (!driver.assignedRoute.includes(route._id)) {
+          driver.assignedRoute.push(route._id);
+          await driver.save();
+        }
+      }
+
       await route.save();
       res
         .status(201)
@@ -42,7 +57,15 @@ module.exports = {
       // Fetch all routes (no pagination)
       if (pageNum === 0 && limitNum === 0) {
         const routes = await Routes.find()
-          .populate('assignedDriver', 'name email _id')
+          .populate({
+            path: 'assignedDriver',
+            select: 'licenseNumber vehicleType status driver',
+            populate: {
+              path: 'driver',
+              model: 'User',
+              select: 'name email phone',
+            },
+          })
           .select('-__v')
           .lean();
 
@@ -65,7 +88,15 @@ module.exports = {
 
       const [routes, total] = await Promise.all([
         Routes.find()
-          .populate('assignedDriver', 'name email _id')
+          .populate({
+            path: 'assignedDriver',
+            select: 'licenseNumber vehicleType status driver',
+            populate: {
+              path: 'driver',
+              model: 'User',
+              select: 'name email phone',
+            },
+          })
           .select('-__v')
           .sort({ createdAt: -1 })
           .skip(skip)
@@ -88,11 +119,11 @@ module.exports = {
 
       res.status(200).json({
         status: true,
+        data,
         total,
+        totalPages,
         page: pageNum,
         limit: limitNum,
-        totalPages,
-        data,
       });
     } catch (error) {
       console.error('Error fetching routes:', error);
@@ -115,6 +146,9 @@ module.exports = {
         status,
       } = req.body;
 
+      const oldRoute = await Routes.findById(id);
+      const oldAssignedDriver = oldRoute?.assignedDriver;
+
       const route = await Routes.findByIdAndUpdate(
         id,
         {
@@ -134,6 +168,43 @@ module.exports = {
           .json({ status: false, message: 'Route not found' });
       }
 
+      if (
+        oldAssignedDriver &&
+        oldAssignedDriver.toString() !== assignedDriver
+      ) {
+        const oldDriver = await Driver.findById(oldAssignedDriver);
+        if (oldDriver) {
+          oldDriver.assignedRoute = oldDriver.assignedRoute.filter(
+            (routeId) => routeId.toString() !== route._id.toString(),
+          );
+          await oldDriver.save();
+        }
+      }
+
+      if (assignedDriver) {
+        const driver = await Driver.findById(assignedDriver);
+        if (!driver) {
+          return res
+            .status(404)
+            .json({ status: false, message: 'Driver not found' });
+        }
+
+        if (!driver.assignedRoute.includes(route._id)) {
+          driver.assignedRoute.push(route._id);
+          await driver.save();
+        }
+      } else {
+        if (oldAssignedDriver) {
+          const oldDriver = await Driver.findById(oldAssignedDriver);
+          if (oldDriver) {
+            oldDriver.assignedRoute = oldDriver.assignedRoute.filter(
+              (routeId) => routeId.toString() !== route._id.toString(),
+            );
+            await oldDriver.save();
+          }
+        }
+      }
+
       res
         .status(200)
         .json({ status: true, message: 'Route updated successfully', route });
@@ -144,12 +215,26 @@ module.exports = {
   deleteRoute: async (req, res) => {
     try {
       const { id } = req.params;
-      const route = await Routes.findByIdAndDelete(id);
+      const route = await Routes.findById(id);
+
       if (!route) {
         return res
           .status(404)
           .json({ status: false, message: 'Route not found' });
       }
+
+      if (route.assignedDriver) {
+        const driver = await Driver.findById(route.assignedDriver);
+        if (driver) {
+          driver.assignedRoute = driver.assignedRoute.filter(
+            (routeId) => routeId.toString() !== route._id.toString(),
+          );
+          await driver.save();
+        }
+      }
+
+      await Routes.findByIdAndDelete(id);
+
       res
         .status(200)
         .json({ status: true, message: 'Route deleted successfully' });
@@ -161,7 +246,15 @@ module.exports = {
     try {
       const { id } = req.params;
       const route = await Routes.findById(id)
-        .populate('assignedDriver', 'name email _id')
+        .populate({
+          path: 'assignedDriver',
+          select: 'licenseNumber vehicleType status driver',
+          populate: {
+            path: 'driver',
+            model: 'User',
+            select: 'name email phone',
+          },
+        })
         .select('-__v')
         .lean();
 

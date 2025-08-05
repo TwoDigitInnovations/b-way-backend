@@ -208,29 +208,29 @@ module.exports = {
       }
 
       const [users, total] = await Promise.all([
-              User.find({ role })
-                .select('-__v -password')
-                .skip(skip)
-                .limit(limitNum)
-                .lean(),
-              User.countDocuments({ role }),
-            ]);
+        User.find({ role })
+          .select('-__v -password')
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        User.countDocuments({ role }),
+      ]);
 
-            const data = users.map((user, index) => ({
-              ...user,
-              index: skip + index + 1,
-            }));
-      
-            const totalPages = Math.ceil(total / limitNum);
-      
-            res.status(200).json({
-              status: true,
-              total,
-              page: pageNum,
-              limit: limitNum,
-              totalPages,
-              data,
-            });
+      const data = users.map((user, index) => ({
+        ...user,
+        index: skip + index + 1,
+      }));
+
+      const totalPages = Math.ceil(total / limitNum);
+
+      res.status(200).json({
+        status: true,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+        data,
+      });
 
       // const users = await User.find({ role })
       //   .select('-password')
@@ -248,6 +248,21 @@ module.exports = {
     } catch (error) {
       console.error(error);
       response.error(res, error);
+    }
+  },
+  getUserList: async (req, res) => {
+    try {
+      const { role } = req.params;
+
+      const users = await User.find({ role }).select('-__v -password').lean();
+
+      res.status(200).json({
+        status: true,
+        data: users,
+      });
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ status: false, message: error.message });
     }
   },
 };

@@ -20,7 +20,8 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
     items: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Item',
       required: true,
     },
     qty: {
