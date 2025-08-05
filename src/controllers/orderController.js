@@ -240,7 +240,7 @@ module.exports = {
         no: index + 1,
         facilityName: order.user?.name || 'N/A',
         orderId: order.orderId,
-        items: order.items,
+        items: order.items?.name || 'N/A',
         qty: order.qty,
         status: order.status,
         statusColor: getStatusColor(order.status),
