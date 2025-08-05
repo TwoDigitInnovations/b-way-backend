@@ -5,5 +5,4 @@ module.exports = (app) => {
   app.use('/order', require("@routes/orderRoute"));
   app.use('/route', require("@routes/routeRoutes"));
   app.use('/driver', require("@routes/driverRoutes"));
-  app.use('/item', require("@routes/itemRoutes"));
 };

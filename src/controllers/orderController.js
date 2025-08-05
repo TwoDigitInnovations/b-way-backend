@@ -1,6 +1,5 @@
 const Order = require('@models/Orders');
 const User = require('@models/User');
-const Item = require('@models/items');
 
 module.exports = {
   createOrder: async (req, res) => {
@@ -27,14 +26,6 @@ module.exports = {
         });
       }
 
-      const itemExists = await Item.findById(items);
-      if (itemExists.stock < qty) {
-        return res.status(400).json({
-          status: false,
-          message: 'Insufficient stock for the selected item',
-        });
-      }
-
       const order = new Order({
         items,
         qty,
@@ -53,11 +44,7 @@ module.exports = {
         user,
       });
 
-      // decrement item stock
-      itemExists.stock -= qty;
-      await itemExists.save();
       await order.save();
-
       res
         .status(201)
         .json({ status: true, message: 'Order created successfully', order });
@@ -66,7 +53,6 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
-
   getOrders: async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     const pageNum = parseInt(page, 10);
@@ -75,7 +61,6 @@ module.exports = {
 
     try {
       const orders = await Order.find()
-        .populate('items', 'name price')
         .populate('route', 'routeName')
         .populate('user', 'name email role')
         .select('-__v')
@@ -128,7 +113,7 @@ module.exports = {
         deliveryLocation,
         route,
         status,
-        eta,
+        eta
       } = req.body;
       const order = await Order.findByIdAndUpdate(
         req.params.id,
@@ -207,5 +192,5 @@ module.exports = {
     } catch (error) {
       res.status(500).json({ status: false, message: error.message });
     }
-  },
+  }
 };
