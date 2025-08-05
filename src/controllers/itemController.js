@@ -68,6 +68,7 @@ module.exports = {
           .skip(skip)
           .limit(limitNum),
         Item.countDocuments(query),
+
       ]);
 
       const data = items.map((item, index) => ({
@@ -86,7 +87,7 @@ module.exports = {
         limit: limitNum,
       });
     } catch (error) {
-      console.error('Error fetching items:', error);
+      console.error('Error fetching items', error);
       res.status(500).json({ status: false, message: error.message });
     }
   },

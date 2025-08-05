@@ -1,6 +1,21 @@
 const Order = require('@models/Orders');
 const User = require('@models/User');
-const Item = require('@models/items');
+
+// Helper function to get status color
+const getStatusColor = (status) => {
+  const statusColors = {
+    'Pending': 'bg-yellow-100 text-yellow-800',
+    'Active': 'bg-green-100 text-green-800',
+    'Delivered': 'bg-green-100 text-green-800',
+    'Picked Up': 'bg-blue-100 text-blue-800',
+    'Scheduled': 'bg-yellow-100 text-yellow-800',
+    'Cancelled': 'bg-red-100 text-red-800',
+    'Hold': 'bg-red-100 text-red-800',
+    'Return Created': 'bg-teal-100 text-teal-800',
+    'Invoice Generated': 'bg-green-100 text-green-800',
+  };
+  return statusColors[status] || 'bg-gray-100 text-gray-800';
+};
 
 module.exports = {
   createOrder: async (req, res) => {
@@ -27,14 +42,6 @@ module.exports = {
         });
       }
 
-      const itemExists = await Item.findById(items);
-      if (itemExists.stock < qty) {
-        return res.status(400).json({
-          status: false,
-          message: 'Insufficient stock for the selected item',
-        });
-      }
-
       const order = new Order({
         items,
         qty,
@@ -53,11 +60,7 @@ module.exports = {
         user,
       });
 
-      // decrement item stock
-      itemExists.stock -= qty;
-      await itemExists.save();
       await order.save();
-
       res
         .status(201)
         .json({ status: true, message: 'Order created successfully', order });
@@ -66,7 +69,6 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
-
   getOrders: async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     const pageNum = parseInt(page, 10);
@@ -75,7 +77,6 @@ module.exports = {
 
     try {
       const orders = await Order.find()
-        .populate('items', 'name price')
         .populate('route', 'routeName')
         .populate('user', 'name email role')
         .select('-__v')
@@ -128,7 +129,7 @@ module.exports = {
         deliveryLocation,
         route,
         status,
-        eta,
+        eta
       } = req.body;
       const order = await Order.findByIdAndUpdate(
         req.params.id,
@@ -208,4 +209,50 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
+  getRecentOrders: async (req, res) => {
+    try {
+      const { limit = 6 } = req.query;
+      const limitNum = parseInt(limit, 10);
+      const { role, _id } = req.user;
+
+     
+      let query = {};
+      if (role === 'USER') {
+        // Dispatchers and regular users see only their orders
+        query = { user: _id };
+      }
+      // Admin users see all orders (no filter needed)
+
+      const orders = await Order.find(query)
+        .populate('route', 'routeName')
+        .populate('user', 'name email role')
+        .select('-__v')
+        .sort({ createdAt: -1 })
+        .limit(limitNum)
+        .lean();
+
+  
+      const transformedOrders = orders.map((order, index) => ({
+        no: index + 1,
+        facilityName: order.user?.name || 'N/A',
+        orderId: order.orderId,
+        items: order.items,
+        qty: order.qty,
+        status: order.status,
+        statusColor: getStatusColor(order.status),
+        assignedDriver: order.assignedDriver ? 'Assigned' : 'Unassigned',
+        route: order.route?.routeName || 'N/A',
+        eta: order.eta || 'N/A',
+      }));
+
+      res.status(200).json({
+        status: true,
+        data: transformedOrders,
+        total: orders.length,
+      });
+    } catch (error) {
+      console.error('Error fetching recent orders:', error);
+      res.status(500).json({ status: false, message: error.message });
+    }
+  }
 };
