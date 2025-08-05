@@ -79,6 +79,7 @@ module.exports = {
       const orders = await Order.find()
         .populate('route', 'routeName')
         .populate('user', 'name email role')
+        .populate('items', 'name')
         .select('-__v')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -109,6 +110,7 @@ module.exports = {
       const order = await Order.findById(req.params.id)
         .populate('route', 'routeName')
         .populate('user', 'name email role')
+        .populate('items', 'name')
         .select('-__v');
       if (!order) {
         return res
@@ -178,6 +180,7 @@ module.exports = {
       const orders = await Order.find({ user: userId })
         .populate('route', 'routeName')
         .populate('user', 'name email role')
+        .populate('items', 'name')
         .select('-__v')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -226,6 +229,7 @@ module.exports = {
       const orders = await Order.find(query)
         .populate('route', 'routeName')
         .populate('user', 'name email role')
+        .populate('items', 'name')
         .select('-__v')
         .sort({ createdAt: -1 })
         .limit(limitNum)
@@ -236,7 +240,7 @@ module.exports = {
         no: index + 1,
         facilityName: order.user?.name || 'N/A',
         orderId: order.orderId,
-        items: order.items,
+        items: order.items?.name || 'N/A',
         qty: order.qty,
         status: order.status,
         statusColor: getStatusColor(order.status),
