@@ -89,6 +89,9 @@ module.exports = {
           email: user.email,
           name: user.name,
           role: user.role,
+          ...(user.billing_Address && { billing_Address: user.billing_Address }),
+          ...(user.delivery_Address && { delivery_Address: user.delivery_Address }),
+          ...(user.phone && { phone: user.phone }),
         },
       });
     } catch (error) {

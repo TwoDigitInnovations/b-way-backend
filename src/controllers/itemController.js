@@ -95,7 +95,7 @@ module.exports = {
     try {
       const items = await Item.find()
         .populate('dispatcher', 'name email')
-        .select('_id name price pickupLocation')
+        .select('_id name price pickupLocation stock')
         .lean();
 
       res.status(200).json({

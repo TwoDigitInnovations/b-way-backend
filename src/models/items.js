@@ -39,7 +39,7 @@ const itemSchema = new mongoose.Schema({
             type: String,
             required: true,
         },
-        zipCode: {
+        zipcode: {
             type: String,
             required: true,
         },

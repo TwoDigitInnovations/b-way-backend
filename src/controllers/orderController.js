@@ -4,13 +4,13 @@ const User = require('@models/User');
 // Helper function to get status color
 const getStatusColor = (status) => {
   const statusColors = {
-    'Pending': 'bg-yellow-100 text-yellow-800',
-    'Active': 'bg-green-100 text-green-800',
-    'Delivered': 'bg-green-100 text-green-800',
+    Pending: 'bg-yellow-100 text-yellow-800',
+    Active: 'bg-green-100 text-green-800',
+    Delivered: 'bg-green-100 text-green-800',
     'Picked Up': 'bg-blue-100 text-blue-800',
-    'Scheduled': 'bg-yellow-100 text-yellow-800',
-    'Cancelled': 'bg-red-100 text-red-800',
-    'Hold': 'bg-red-100 text-red-800',
+    Scheduled: 'bg-yellow-100 text-yellow-800',
+    Cancelled: 'bg-red-100 text-red-800',
+    Hold: 'bg-red-100 text-red-800',
     'Return Created': 'bg-teal-100 text-teal-800',
     'Invoice Generated': 'bg-green-100 text-green-800',
   };
@@ -20,70 +20,51 @@ const getStatusColor = (status) => {
 module.exports = {
   createOrder: async (req, res) => {
     try {
-      const {
-        items,
-        qty,
-        pickupLocation,
-        pickupCity,
-        pickupState,
-        pickupZipcode,
-        deliveryLocation,
-        deliveryCity,
-        deliveryState,
-        deliveryZipcode,
-      } = req.body;
-
+      const { items } = req.body;
       const user = req.user._id;
 
-      if (!items || !qty) {
+      if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
           status: false,
-          message: 'Missing required fields',
+          message: 'Missing or invalid items',
         });
       }
 
-      let userDetails;
-
-      if (user) {
-        userDetails = await User.findById(user).select('delivery_Address');
-        if (!userDetails) {
-          return res.status(404).json({
-            status: false,
-            message: 'User not found',
-          });
-        }
+      const userDetails = await User.findById(user).select('delivery_Address');
+      if (!userDetails) {
+        return res.status(404).json({
+          status: false,
+          message: 'User not found',
+        });
       }
 
-      const order = new Order({
-        items,
-        qty,
-        pickupLocation: {
-          address: pickupLocation,
-          city: pickupCity,
-          state: pickupState,
-          zipcode: pickupZipcode,
-        },
-        deliveryLocation: userDetails.delivery_Address || {
-          address: deliveryLocation,
-          city: deliveryCity,
-          state: deliveryState,
-          zipcode: deliveryZipcode,
-        },
-        // deliveryLocation: {
-        //   address: deliveryLocation,
-        //   city: deliveryCity,
-        //   state: deliveryState,
-        //   zipcode: deliveryZipcode,
-        // },
-        user,
-      });
+      const createdOrders = [];
 
-      await order.save();
-      res
-        .status(201)
-        .json({ status: true, message: 'Order created successfully', order });
+      for (const item of items) {
+        const order = new Order({
+          items: item.itemId,
+          qty: item.qty,
+          pickupLocation: {
+            address: item.pickupLocation,
+            city: item.pickupCity,
+            state: item.pickupState,
+            zipcode: item.pickupZipcode,
+          },
+          deliveryLocation: userDetails.delivery_Address,
+          user,
+        });
+
+        await order.save();
+        createdOrders.push(order);
+      }
+
+      res.status(201).json({
+        status: true,
+        message: 'Orders created successfully',
+        orders: createdOrders,
+      });
     } catch (error) {
-      console.error('Error creating order:', error);
+      console.error('Error creating orders:', error);
       res.status(500).json({ status: false, message: error.message });
     }
   },
@@ -149,7 +130,7 @@ module.exports = {
         deliveryLocation,
         route,
         status,
-        eta
+        eta,
       } = req.body;
       const order = await Order.findByIdAndUpdate(
         req.params.id,
@@ -236,7 +217,6 @@ module.exports = {
       const limitNum = parseInt(limit, 10);
       const { role, _id } = req.user;
 
-     
       let query = {};
       if (role === 'USER') {
         // Dispatchers and regular users see only their orders
@@ -253,7 +233,6 @@ module.exports = {
         .limit(limitNum)
         .lean();
 
-  
       const transformedOrders = orders.map((order, index) => ({
         no: index + 1,
         facilityName: order.user?.name || 'N/A',
@@ -276,5 +255,5 @@ module.exports = {
       console.error('Error fetching recent orders:', error);
       res.status(500).json({ status: false, message: error.message });
     }
-  }
+  },
 };
