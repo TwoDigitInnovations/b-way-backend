@@ -41,7 +41,7 @@ const getCoordinatesWithFallback = async (address) => {
   try {
     // First, try AWS Location Service
     const command = new SearchPlaceIndexForTextCommand({
-      IndexName: process.env.AWS_PLACE_INDEX,
+      IndexName: process.env.AWS_PLACE_INDEX || "BWayPlaceIndex",
       Text: address,
       MaxResults: 1
     });
@@ -92,7 +92,7 @@ const calculateRouteWithFallback = async (startCoords, endCoords, stopCoords = [
   try {
     // First, try AWS Location Service
     const command = new CalculateRouteCommand({
-      CalculatorName: process.env.AWS_CALCULATOR_NAME,
+      CalculatorName: process.env.AWS_CALCULATOR_NAME || "BWayRouteCalculator",
       DeparturePosition: startCoords,
       DestinationPosition: endCoords,
       WaypointPositions: stopCoords.length > 0 ? stopCoords : undefined,

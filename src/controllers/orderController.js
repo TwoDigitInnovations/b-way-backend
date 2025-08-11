@@ -31,42 +31,42 @@ module.exports = {
         });
       }
 
-      const userDetails = await User.findById(user).select('delivery_Address');
+      const userDetails = await User.findById(user).select('name delivery_Address');
       if (!userDetails) {
         return res.status(404).json({
           status: false,
           message: 'User not found',
         });
       }
+      
+      // const userDetails = req.body;
+      // console.log(userDetails.delivery_Address);
 
       const createdOrders = [];
 
       for (const item of items) {
         const staticPickupAddress = "160 W Forest Ave, Englewood";
         
-        // Create delivery address string for route matching
         const deliveryAddress = `${userDetails.delivery_Address.address}, ${userDetails.delivery_Address.city}, ${userDetails.delivery_Address.state} ${userDetails.delivery_Address.zipcode}`;
 
-        const hospitalName = item.hospitalName || userDetails.name || `Hospital-${user.toString().slice(-6)}`;
-        const hospitalAddress = item.hospitalAddress || `${item.pickupLocation}, ${item.pickupCity}, ${item.pickupState} ${item.pickupZipcode}`;
+        const hospitalName = userDetails.name || userDetails.name || `Hospital-${user.toString().slice(-6)}`;
+        const hospitalAddress = deliveryAddress;
 
         console.log(`🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}"`);
 
-        // Find route based only on delivery location, create if none exists, add hospital as stop
         const routeMatch = await findOrCreateRouteForDelivery(staticPickupAddress, deliveryAddress, hospitalName, hospitalAddress);
         
         const order = new Order({
           items: item.itemId,
           qty: item.qty,
+          // Client address
           pickupLocation: {
             address: "160 W Forest Ave",
             city: "Englewood",
-            state: "NJ", // Assuming New Jersey, adjust if different
-            zipcode: "07631", // Assuming this zipcode, adjust if different
+            state: "NJ",
           },
           deliveryLocation: userDetails.delivery_Address,
           user,
-          // Always assign the route (either found or created)
           route: routeMatch.route ? routeMatch.route._id : null,
         });
 
@@ -127,8 +127,20 @@ module.exports = {
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
+    const {_id: userId, role } = req.user;
+    const isAdmin = role === 'ADMIN';
+    const isClient = role === 'CLIENT';
+    const query = isAdmin || isClient ? {} : { user: userId };
+
+    // const match = {
+    //   $or: [
+    //     { user: userId },
+    //     { 'route.stops.hospitalId': userId }
+    //   ]
+    // };
+
     try {
-      const orders = await Order.find()
+      const orders = await Order.find(query)
         .populate('route', 'routeName')
         .populate('user', 'name email role')
         .populate('items', 'name')

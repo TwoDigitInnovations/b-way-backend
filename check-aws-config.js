@@ -68,11 +68,11 @@ const checkConfiguration = async () => {
     // Test route calculator
     const { CalculateRouteCommand } = require('@aws-sdk/client-location');
     await locationClient.send(new CalculateRouteCommand({
-      CalculatorName: process.env.AWS_CALCULATOR_NAME,
+      CalculatorName: process.env.AWS_CALCULATOR_NAME || "BWayRouteCalculator",
       DeparturePosition: [77.2090, 28.6139], // Delhi
       DestinationPosition: [72.8777, 19.0760]  // Mumbai
     }));
-    console.log(`  ✅ Route Calculator (${process.env.AWS_CALCULATOR_NAME}) is accessible`);
+    console.log(`  ✅ Route Calculator (${process.env.AWS_CALCULATOR_NAME || "BWayRouteCalculator"}) is accessible`);
 
     console.log('\n🎉 All AWS Location Service resources are configured correctly!');
     return true;

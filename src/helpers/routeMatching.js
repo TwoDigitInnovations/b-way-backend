@@ -1,14 +1,8 @@
 const Routes = require('../models/Routes');
-const { getCoordinatesWithFallback } = require('./awsLocationFallback');
+const { getCoordinatesWithFallback, calculateRouteWithFallback } = require('./awsLocationFallback');
 
-/**
- * Calculate distance between two coordinates using Haversine formula
- * @param {Array} coord1 - [longitude, latitude]
- * @param {Array} coord2 - [longitude, latitude]
- * @returns {number} Distance in kilometers
- */
 const calculateDistance = (coord1, coord2) => {
-  const R = 6371; // Earth's radius in kilometers
+  const R = 6371; // Earth's radius
   const [lon1, lat1] = coord1;
   const [lon2, lat2] = coord2;
   
@@ -25,16 +19,10 @@ const calculateDistance = (coord1, coord2) => {
   return distance;
 };
 
-/**
- * Calculate the minimum distance from a point to a route (start, stops, or end)
- * @param {Array} pointCoords - [longitude, latitude]
- * @param {Object} route - Route object with startLocation, endLocation, and stops
- * @returns {Object} { distance: number, type: string, details: object }
- */
 const calculateDistanceToRoute = (pointCoords, route) => {
   const distances = [];
   
-  // Distance to start location
+  // start location
   if (route.startLocation?.coordinates) {
     distances.push({
       distance: calculateDistance(pointCoords, route.startLocation.coordinates),
@@ -44,7 +32,7 @@ const calculateDistanceToRoute = (pointCoords, route) => {
     });
   }
   
-  // Distance to end location
+  // end location
   if (route.endLocation?.coordinates) {
     distances.push({
       distance: calculateDistance(pointCoords, route.endLocation.coordinates),
@@ -54,7 +42,7 @@ const calculateDistanceToRoute = (pointCoords, route) => {
     });
   }
   
-  // Distance to stops
+  // stops
   if (route.stops && route.stops.length > 0) {
     route.stops.forEach((stop, index) => {
       if (stop.coordinates) {
@@ -85,18 +73,8 @@ const calculateDistanceToRoute = (pointCoords, route) => {
   };
 };
 
-/**
- * Find the best matching route for pickup and delivery locations
- * @param {string} pickupAddress - Pickup address string
- * @param {string} deliveryAddress - Delivery address string
- * @param {number} maxDistance - Maximum distance in km to consider a route match (default: 50km)
- * @returns {Object} { route: Route|null, matchScore: number, matchDetails: object }
- */
 const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance = 50) => {
   try {
-    console.log(`🔍 Finding best route for pickup: "${pickupAddress}" → delivery: "${deliveryAddress}"`);
-    
-    // Get coordinates for pickup and delivery addresses
     const [pickupCoords, deliveryCoords] = await Promise.all([
       getCoordinatesWithFallback(pickupAddress),
       getCoordinatesWithFallback(deliveryAddress)
@@ -105,7 +83,6 @@ const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance
     console.log(`📍 Pickup coordinates: [${pickupCoords[0]}, ${pickupCoords[1]}]`);
     console.log(`📍 Delivery coordinates: [${deliveryCoords[0]}, ${deliveryCoords[1]}]`);
     
-    // Get all active routes
     const routes = await Routes.find({ status: 'Active' }).lean();
     
     if (routes.length === 0) {
@@ -121,7 +98,6 @@ const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance
       matchDetails: null
     };
     
-    // Analyze each route
     for (const route of routes) {
       const pickupMatch = calculateDistanceToRoute(pickupCoords, route);
       const deliveryMatch = calculateDistanceToRoute(deliveryCoords, route);
@@ -132,9 +108,8 @@ const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance
         continue;
       }
       
-      // Calculate match score (lower total distance = higher score)
       const totalDistance = pickupMatch.distance + deliveryMatch.distance;
-      const matchScore = Math.max(0, 100 - totalDistance); // Score from 0-100
+      const matchScore = Math.max(0, 100 - totalDistance); 
       
       const routeAnalysis = {
         routeId: route._id,
@@ -148,7 +123,6 @@ const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance
       
       console.log(`✅ Route "${route.routeName}": score=${matchScore.toFixed(1)}, pickup=${pickupMatch.distance.toFixed(2)}km (${pickupMatch.details.description}), delivery=${deliveryMatch.distance.toFixed(2)}km (${deliveryMatch.details.description})`);
       
-      // Update best match if this route scores higher
       if (matchScore > bestMatch.matchScore) {
         bestMatch = {
           route,
@@ -172,12 +146,6 @@ const findBestMatchingRoute = async (pickupAddress, deliveryAddress, maxDistance
   }
 };
 
-/**
- * Get route suggestions for an address (pickup or delivery)
- * @param {string} address - Address to find routes for
- * @param {number} maxDistance - Maximum distance in km (default: 30km)
- * @returns {Array} Array of routes sorted by distance
- */
 const getRouteSuggestions = async (address, maxDistance = 30) => {
   try {
     const coords = await getCoordinatesWithFallback(address);
@@ -210,21 +178,10 @@ const getRouteSuggestions = async (address, maxDistance = 30) => {
   }
 };
 
-/**
- * Find existing route for delivery location or create new one
- * Also adds hospital as stop if it's not already in the route
- * @param {string} staticPickupAddress - Static pickup address
- * @param {string} deliveryAddress - Delivery address string
- * @param {string} hospitalName - Name/identifier of the hospital
- * @param {string} hospitalAddress - Full address of the hospital
- * @param {number} maxDistance - Maximum distance to consider existing route (default: 20km)
- * @returns {Object} { route: Route, created: boolean, matchScore: number, deliveryDistance: number, stopAdded: boolean }
- */
 const findOrCreateRouteForDelivery = async (staticPickupAddress, deliveryAddress, hospitalName, hospitalAddress, maxDistance = 20) => {
   try {
     console.log(`🎯 Finding or creating route for delivery: "${deliveryAddress}" from hospital: "${hospitalName}"`);
     
-    // Get coordinates for pickup and delivery addresses
     const [pickupCoords, deliveryCoords, hospitalCoords] = await Promise.all([
       getCoordinatesWithFallback(staticPickupAddress),
       getCoordinatesWithFallback(deliveryAddress),
@@ -235,7 +192,6 @@ const findOrCreateRouteForDelivery = async (staticPickupAddress, deliveryAddress
     console.log(`📍 Delivery coordinates: [${deliveryCoords[0]}, ${deliveryCoords[1]}]`);
     console.log(`🏥 Hospital coordinates: [${hospitalCoords[0]}, ${hospitalCoords[1]}]`);
     
-    // First, try to find an existing route that serves this delivery area
     const routes = await Routes.find({ status: 'Active' });
     
     if (routes.length > 0) {
@@ -276,19 +232,37 @@ const findOrCreateRouteForDelivery = async (staticPickupAddress, deliveryAddress
         if (!hospitalAlreadyExists) {
           console.log(`🏥 Adding hospital "${hospitalName}" as stop to existing route`);
           
-          // Add hospital as a stop to the existing route
           bestMatch.route.stops.push({
             name: hospitalName,
             address: hospitalAddress,
             coordinates: hospitalCoords
           });
           
-          // Save the updated route
+          try {
+            console.log(`🛣️  Recalculating route geometry with new hospital stop`);
+            
+            const allStopCoords = bestMatch.route.stops.map(stop => stop.coordinates).filter(Boolean);
+            
+            const routeData = await calculateRouteWithFallback(
+              bestMatch.route.startLocation.coordinates,
+              bestMatch.route.endLocation.coordinates,
+              allStopCoords
+            );
+            
+            bestMatch.route.geometry = routeData.geometry;
+            
+            console.log(`✅ Route geometry recalculated with ${allStopCoords.length} stops`);
+            console.log(`📏 Updated route: ${(routeData.distance / 1000).toFixed(2)}km, ${Math.round(routeData.duration / 60)} minutes`);
+            
+          } catch (routeError) {
+            console.warn(`⚠️  Failed to recalculate route geometry: ${routeError.message}`);
+          }
+          
           await bestMatch.route.save();
           
           bestMatch.stopAdded = true;
-          bestMatch.message = `Hospital "${hospitalName}" added as stop to existing route "${bestMatch.route.routeName}"`;
-          console.log(`✅ Hospital stop added successfully to route "${bestMatch.route.routeName}"`);
+          bestMatch.message = `Hospital "${hospitalName}" added as stop to existing route "${bestMatch.route.routeName}" and route path updated`;
+          console.log(`✅ Hospital stop added successfully to route "${bestMatch.route.routeName}" with updated geometry`);
         } else {
           console.log(`ℹ️  Hospital "${hospitalName}" already exists in route "${bestMatch.route.routeName}"`);
           bestMatch.stopAdded = false;
@@ -299,18 +273,37 @@ const findOrCreateRouteForDelivery = async (staticPickupAddress, deliveryAddress
       }
     }
     
-    // No suitable existing route found, create a new one
     console.log(`🆕 No existing route found within ${maxDistance}km. Creating new route...`);
     
-    // Parse delivery address components
     const deliveryParts = deliveryAddress.split(',').map(part => part.trim());
     const deliveryCity = deliveryParts.length >= 2 ? deliveryParts[deliveryParts.length - 2] : 'Unknown City';
     const deliveryState = deliveryParts.length >= 1 ? deliveryParts[deliveryParts.length - 1].split(' ')[0] : 'Unknown State';
     
-    // Create route name based on delivery location
     const routeName = `Route to ${deliveryCity}, ${deliveryState}`;
     
-    // Create new route with hospital as first stop
+    let routeGeometry = null;
+    let routeDistance = 0;
+    let routeDuration = 0;
+    
+    try {
+      console.log(`🛣️  Calculating route geometry for new route with hospital stop`);
+      
+      const routeData = await calculateRouteWithFallback(
+        pickupCoords,
+        deliveryCoords,
+        [hospitalCoords] 
+      );
+      
+      routeGeometry = routeData.geometry;
+      routeDistance = routeData.distance;
+      routeDuration = routeData.duration;
+      
+      console.log(`✅ Route geometry calculated: ${(routeDistance / 1000).toFixed(2)}km, ${Math.round(routeDuration / 60)} minutes`);
+      
+    } catch (routeError) {
+      console.warn(`⚠️  Failed to calculate route geometry: ${routeError.message}`);
+    }
+    
     const newRouteData = {
       routeName,
       startLocation: {
@@ -334,22 +327,23 @@ const findOrCreateRouteForDelivery = async (staticPickupAddress, deliveryAddress
           coordinates: hospitalCoords
         }
       ],
-      eta: "Auto-Generated",
+      geometry: routeGeometry, // Include calculated geometry
+      eta: routeDuration > 0 ? `${Math.round(routeDuration / 60)} minutes` : "Auto-Generated",
       activeDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
       status: 'Active'
     };
     
     const newRoute = await Routes.create(newRouteData);
     
-    console.log(`✅ Created new route: "${newRoute.routeName}" (ID: ${newRoute._id}) with hospital "${hospitalName}" as stop`);
+    console.log(`✅ Created new route: "${newRoute.routeName}" (ID: ${newRoute._id}) with hospital "${hospitalName}" as stop and calculated geometry`);
     
     return {
       route: newRoute,
       created: true,
       stopAdded: true,
-      matchScore: 100, // Perfect match for new route
-      deliveryDistance: 0, // Exact match since route created for this delivery
-      message: `New route "${newRoute.routeName}" created with hospital "${hospitalName}" as stop`
+      matchScore: 100, 
+      deliveryDistance: 0, 
+      message: `New route "${newRoute.routeName}" created with hospital "${hospitalName}" as stop and optimized path`
     };
     
   } catch (error) {

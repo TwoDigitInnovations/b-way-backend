@@ -40,7 +40,7 @@ const getCoordinatesFromAddress = async (address) => {
 const calculateRouteWithWaypoints = async (startCoords, endCoords, waypoints = []) => {
   try {
     const command = new CalculateRouteCommand({
-      CalculatorName: process.env.AWS_CALCULATOR_NAME,
+      CalculatorName: process.env.AWS_CALCULATOR_NAME || "BWayRouteCalculator",
       DeparturePosition: startCoords,
       DestinationPosition: endCoords,
       WaypointPositions: waypoints.length > 0 ? waypoints : undefined,
