@@ -6,6 +6,7 @@ router.post("/create", auth(), orderController.createOrder);
 router.get("/", auth(), orderController.getOrders);
 router.get("/my-orders", auth(), orderController.getOrdersByUser);
 router.get("/recent", auth(), orderController.getRecentOrders);
+router.get("/route-suggestions", auth(), orderController.getRouteSuggestions);
 router.get("/:id", auth(), orderController.getOrderById);
 router.put("/:id", auth(), orderController.updateOrder);
 router.delete("/:id", auth(), orderController.deleteOrder);

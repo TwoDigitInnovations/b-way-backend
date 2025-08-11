@@ -4,43 +4,43 @@ const routeSchema = new mongoose.Schema(
   {
     routeName: {
       type: String,
-      required: true,
+      required: false,
     },
     startLocation: {
       address: {
         type: String,
-        required: true,
+        required: false,
       },
       city: {
         type: String,
-        required: true,
+        required: false,
       },
       state: {
         type: String,
-        required: true,
+        required: false,
       },
       zipcode: {
         type: String,
-        required: true,
+        required: false,
       },
       coordinates: { type: [Number], required: true },
     },
     endLocation: {
       address: {
         type: String,
-        required: true,
+        required: false,
       },
       city: {
         type: String,
-        required: true,
+        required: false,
       },
       state: {
         type: String,
-        required: true,
+        required: false,
       },
       zipcode: {
         type: String,
-        required: true,
+        required: false,
       },
       coordinates: { type: [Number], required: true },
     },
@@ -53,7 +53,7 @@ const routeSchema = new mongoose.Schema(
     assignedDriver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Driver',
-      required: true,
+      required: false,
     },
     eta: {
       type: String,
@@ -68,9 +68,9 @@ const routeSchema = new mongoose.Schema(
       enum: ['Active', 'Inactive', 'Completed', 'Archived'],
       default: 'Active',
     },
-    geofences: {
-      type: [String], // Geofence IDs for routes
-      default: [],
+    geometry: {
+      type: [[Number]],
+      required: false,
     },
   },
   {

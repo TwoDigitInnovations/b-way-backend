@@ -1,5 +1,34 @@
 const Routes = require('@models/Routes');
 const Driver = require('@models/Drivers');
+const {
+  processLocationWithCoordinates,
+  processStopsWithCoordinates,
+  calculateRouteWithWaypoints,
+  validateRouteData,
+  formatDistance,
+  formatDuration,
+} = require('@helpers/routeHelpers');
+const {
+  getCoordinatesWithFallback,
+  calculateRouteWithFallback,
+  checkAWSConfiguration,
+} = require('@helpers/awsLocationFallback');
+const {
+  SearchPlaceIndexForTextCommand,
+  CalculateRouteCommand,
+} = require('@aws-sdk/client-location');
+
+checkAWSConfiguration().then((isConfigured) => {
+  if (isConfigured) {
+    console.log('✅ AWS Location Service is properly configured');
+  } else {
+    console.log('⚠️  AWS Location Service not configured - using mock data');
+    console.log('📖 See AWS_SETUP_GUIDE.md for setup instructions');
+  }
+});
+
+const getCoordinates = getCoordinatesWithFallback;
+const calculateRouteWithStops = calculateRouteWithFallback;
 
 module.exports = {
   createRoute: async (req, res) => {
@@ -8,43 +37,110 @@ module.exports = {
         routeName,
         startLocation,
         endLocation,
-        stops,
+        stops = [],
         assignedDriver,
-        eta,
         activeDays,
+        eta,
       } = req.body;
 
-      const route = new Routes({
-        routeName,
-        startLocation,
-        endLocation,
-        stops,
-        assignedDriver,
-        eta,
-        activeDays,
-        status: 'Active',
-      });
+      if (!startLocation?.address || !endLocation?.address) {
+        return res.status(400).json({
+          status: false,
+          error: 'Start and end location addresses are required',
+        });
+      }
 
-      if (assignedDriver) {
-        const driver = await Driver.findById(assignedDriver);
-        if (!driver) {
-          return res
-            .status(404)
-            .json({ status: false, message: 'Driver not found' });
-        }
+      const startCoords = await getCoordinates(startLocation.address);
+      const endCoords = await getCoordinates(endLocation.address);
 
-        if (!driver.assignedRoute.includes(route._id)) {
-          driver.assignedRoute.push(route._id);
-          await driver.save();
+      let processedStops = [];
+      let stopCoords = [];
+
+      if (stops && stops.length > 0) {
+        for (const stop of stops) {
+          if (stop.address || stop.name) {
+            try {
+              const addressToGeocode = stop.address || stop.name;
+              const coords = await getCoordinates(addressToGeocode);
+              processedStops.push({
+                name: stop.name || stop.address,
+                address: stop.address,
+                coordinates: coords,
+              });
+              stopCoords.push(coords);
+            } catch (error) {
+              console.warn(
+                `Failed to geocode stop "${stop.name || stop.address}":`,
+                error.message,
+              );
+            }
+          }
         }
       }
 
-      await route.save();
-      res
-        .status(201)
-        .json({ status: true, message: 'Route created successfully', route });
+      const routeData = await calculateRouteWithStops(
+        startCoords,
+        endCoords,
+        stopCoords,
+      );
+
+      const startLocationData = {
+        address: startLocation.address,
+        city: startLocation.city,
+        state: startLocation.state,
+        zipcode: startLocation.zipcode,
+        coordinates: startCoords,
+      };
+
+      const endLocationData = {
+        address: endLocation.address,
+        city: endLocation.city,
+        state: endLocation.state,
+        zipcode: endLocation.zipcode,
+        coordinates: endCoords,
+      };
+
+      const newRoute = await Routes.create({
+        routeName:
+          routeName || `${startLocation.address} → ${endLocation.address}`,
+        startLocation: startLocationData,
+        endLocation: endLocationData,
+        stops: processedStops,
+        geometry: routeData.geometry,
+        assignedDriver: assignedDriver || null,
+        activeDays: activeDays || [],
+        eta: eta || `${Math.round(routeData.duration / 60)} minutes`,
+        status: 'Active',
+      });
+
+      // Update driver
+      if (assignedDriver) {
+        const driver = await Driver.findById(assignedDriver);
+        if (driver) {
+          if (!driver.assignedRoute.includes(newRoute._id)) {
+            driver.assignedRoute.push(newRoute._id);
+            await driver.save();
+          }
+        }
+      }
+
+      res.status(201).json({
+        status: true,
+        message: 'Route created successfully',
+        route: newRoute,
+        routeDetails: {
+          distance: `${(routeData.distance / 1000).toFixed(2)} km`,
+          duration: `${Math.round(routeData.duration / 60)} minutes`,
+          stops: processedStops.length,
+        },
+      });
     } catch (error) {
-      res.status(500).json({ status: false, message: error.message });
+      console.error('Route creation error:', error);
+      res.status(500).json({
+        status: false,
+        error: 'Route creation failed',
+        message: error.message,
+      });
     }
   },
   getRoutes: async (req, res) => {
@@ -139,7 +235,8 @@ module.exports = {
       const {
         routeName,
         startLocation,
-        stops,
+        endLocation,
+        stops = [],
         assignedDriver,
         eta,
         activeDays,
@@ -147,69 +244,154 @@ module.exports = {
       } = req.body;
 
       const oldRoute = await Routes.findById(id);
-      const oldAssignedDriver = oldRoute?.assignedDriver;
-
-      const route = await Routes.findByIdAndUpdate(
-        id,
-        {
-          routeName,
-          startLocation,
-          stops,
-          assignedDriver,
-          eta,
-          activeDays,
-          status,
-        },
-        { new: true },
-      );
-      if (!route) {
+      if (!oldRoute) {
         return res
           .status(404)
           .json({ status: false, message: 'Route not found' });
       }
 
+      const oldAssignedDriver = oldRoute.assignedDriver?.toString();
+
       if (
-        oldAssignedDriver &&
-        oldAssignedDriver.toString() !== assignedDriver
+        (startLocation && !startLocation.address) ||
+        (endLocation && !endLocation.address)
       ) {
+        return res.status(400).json({
+          status: false,
+          error: 'Start and end location addresses are required',
+        });
+      }
+
+      const updatedStartLocation = startLocation
+        ? {
+            ...startLocation,
+            coordinates: await getCoordinates(startLocation.address),
+          }
+        : oldRoute.startLocation;
+
+      const updatedEndLocation = endLocation
+        ? {
+            ...endLocation,
+            coordinates: await getCoordinates(endLocation.address),
+          }
+        : oldRoute.endLocation;
+
+      let processedStops = oldRoute.stops;
+      let stopCoords = [];
+
+      if (stops && stops.length > 0) {
+        processedStops = [];
+        for (const stop of stops) {
+          if (stop.address || stop.name) {
+            try {
+              const addressToGeocode = stop.address || stop.name;
+              const coords = await getCoordinates(addressToGeocode);
+              console.log(`Geocoded stop "${stop.name || stop.address}" to coordinates:`, coords);
+              processedStops.push({
+                name: stop.name || stop.address,
+                address: stop.address,
+                coordinates: coords,
+              });
+              stopCoords.push(coords);
+            } catch (err) {
+              console.warn(
+                `Failed to geocode stop "${stop.name || stop.address}":`,
+                err.message,
+              );
+            }
+          }
+        }
+      } else {
+        stopCoords = processedStops.map((s) => s.coordinates).filter(Boolean);
+      }
+
+      const locationsChanged =
+        JSON.stringify(updatedStartLocation.coordinates) !==
+          JSON.stringify(oldRoute.startLocation.coordinates) ||
+        JSON.stringify(updatedEndLocation.coordinates) !==
+          JSON.stringify(oldRoute.endLocation.coordinates) ||
+        JSON.stringify(processedStops) !== JSON.stringify(oldRoute.stops);
+
+      let routeGeometry = oldRoute.geometry;
+      let routeDetails = null;
+      let updatedEta = eta || oldRoute.eta;
+
+      if (locationsChanged) {
+        try {
+          const routeData = await calculateRouteWithStops(
+            updatedStartLocation.coordinates,
+            updatedEndLocation.coordinates,
+            stopCoords,
+          );
+
+          routeGeometry = routeData.geometry;
+          routeDetails = {
+            distance: `${(routeData.distance / 1000).toFixed(2)} km`,
+            duration: `${Math.round(routeData.duration / 60)} minutes`,
+            stops: processedStops.length,
+          };
+
+          if (!eta) {
+            updatedEta = `${Math.round(routeData.duration / 60)} minutes`;
+          }
+        } catch (err) {
+          console.warn('Route geometry recalculation failed:', err.message);
+        }
+      }
+
+      const updatedRoute = await Routes.findByIdAndUpdate(
+        id,
+        {
+          routeName: routeName || oldRoute.routeName,
+          startLocation: updatedStartLocation,
+          endLocation: updatedEndLocation,
+          stops: processedStops,
+          assignedDriver: assignedDriver || null,
+          eta: updatedEta,
+          activeDays: activeDays || oldRoute.activeDays,
+          status: status || oldRoute.status,
+          geometry: routeGeometry,
+        },
+        { new: true },
+      );
+
+      if (oldAssignedDriver && oldAssignedDriver !== assignedDriver) {
         const oldDriver = await Driver.findById(oldAssignedDriver);
         if (oldDriver) {
           oldDriver.assignedRoute = oldDriver.assignedRoute.filter(
-            (routeId) => routeId.toString() !== route._id.toString(),
+            (routeId) => routeId.toString() !== updatedRoute._id.toString(),
           );
           await oldDriver.save();
         }
       }
 
       if (assignedDriver) {
-        const driver = await Driver.findById(assignedDriver);
-        if (!driver) {
+        const newDriver = await Driver.findById(assignedDriver);
+        if (!newDriver) {
           return res
             .status(404)
-            .json({ status: false, message: 'Driver not found' });
+            .json({ status: false, message: 'Assigned driver not found' });
         }
 
-        if (!driver.assignedRoute.includes(route._id)) {
-          driver.assignedRoute.push(route._id);
-          await driver.save();
-        }
-      } else {
-        if (oldAssignedDriver) {
-          const oldDriver = await Driver.findById(oldAssignedDriver);
-          if (oldDriver) {
-            oldDriver.assignedRoute = oldDriver.assignedRoute.filter(
-              (routeId) => routeId.toString() !== route._id.toString(),
-            );
-            await oldDriver.save();
-          }
+        if (!newDriver.assignedRoute.includes(updatedRoute._id)) {
+          newDriver.assignedRoute.push(updatedRoute._id);
+          await newDriver.save();
         }
       }
 
-      res
-        .status(200)
-        .json({ status: true, message: 'Route updated successfully', route });
+      res.status(200).json({
+        status: true,
+        message: 'Route updated successfully',
+        route: updatedRoute,
+        ...(routeDetails && { routeDetails }),
+      });
     } catch (error) {
-      res.status(500).json({ status: false, message: error.message });
+      console.error('Error updating route:', error);
+      res.status(500).json({
+        status: false,
+        message: 'Route update failed',
+        error: error.message,
+      });
     }
   },
   deleteRoute: async (req, res) => {
@@ -267,6 +449,53 @@ module.exports = {
       res.status(200).json({ status: true, route });
     } catch (error) {
       res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  getRouteMap: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const route = await Routes.findById(id)
+        .populate({
+          path: 'assignedDriver',
+          select: 'licenseNumber vehicleType driver',
+          populate: {
+            path: 'driver',
+            model: 'User',
+            select: 'name email phone',
+          },
+        })
+        .lean();
+
+      if (!route) {
+        return res.status(404).json({
+          status: false,
+          message: 'Route not found',
+        });
+      }
+
+      const mapData = {
+        routeId: route._id,
+        routeName: route.routeName,
+        startLocation: route.startLocation,
+        endLocation: route.endLocation,
+        stops: route.stops,
+        geometry: route.geometry,
+        assignedDriver: route.assignedDriver,
+        status: route.status,
+        activeDays: route.activeDays,
+        eta: route.eta,
+      };
+
+      res.status(200).json({
+        status: true,
+        route: mapData,
+      });
+    } catch (error) {
+      console.error('Error fetching route for map:', error);
+      res.status(500).json({
+        status: false,
+        message: error.message,
+      });
     }
   },
 };

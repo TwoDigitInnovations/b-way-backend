@@ -1,5 +1,6 @@
 const Order = require('@models/Orders');
 const User = require('@models/User');
+const { findBestMatchingRoute, getRouteSuggestions, findOrCreateRouteForDelivery } = require('../helpers/routeMatching');
 
 // Helper function to get status color
 const getStatusColor = (status) => {
@@ -41,27 +42,79 @@ module.exports = {
       const createdOrders = [];
 
       for (const item of items) {
+        const staticPickupAddress = "160 W Forest Ave, Englewood";
+        
+        // Create delivery address string for route matching
+        const deliveryAddress = `${userDetails.delivery_Address.address}, ${userDetails.delivery_Address.city}, ${userDetails.delivery_Address.state} ${userDetails.delivery_Address.zipcode}`;
+
+        const hospitalName = item.hospitalName || userDetails.name || `Hospital-${user.toString().slice(-6)}`;
+        const hospitalAddress = item.hospitalAddress || `${item.pickupLocation}, ${item.pickupCity}, ${item.pickupState} ${item.pickupZipcode}`;
+
+        console.log(`🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}"`);
+
+        // Find route based only on delivery location, create if none exists, add hospital as stop
+        const routeMatch = await findOrCreateRouteForDelivery(staticPickupAddress, deliveryAddress, hospitalName, hospitalAddress);
+        
         const order = new Order({
           items: item.itemId,
           qty: item.qty,
           pickupLocation: {
-            address: item.pickupLocation,
-            city: item.pickupCity,
-            state: item.pickupState,
-            zipcode: item.pickupZipcode,
+            address: "160 W Forest Ave",
+            city: "Englewood",
+            state: "NJ", // Assuming New Jersey, adjust if different
+            zipcode: "07631", // Assuming this zipcode, adjust if different
           },
           deliveryLocation: userDetails.delivery_Address,
           user,
+          // Always assign the route (either found or created)
+          route: routeMatch.route ? routeMatch.route._id : null,
         });
 
         await order.save();
-        createdOrders.push(order);
+
+        const orderWithRouteInfo = order.toObject();
+        if (routeMatch.route) {
+          orderWithRouteInfo.routeAssignment = {
+            assigned: true,
+            routeName: routeMatch.route.routeName,
+            created: routeMatch.created || false,
+            stopAdded: routeMatch.stopAdded || false,
+            hospitalName: hospitalName,
+            matchScore: routeMatch.matchScore || 100,
+            deliveryDistance: routeMatch.deliveryDistance || 0,
+            message: routeMatch.message || (routeMatch.created 
+              ? `New route created and assigned: "${routeMatch.route.routeName}"`
+              : `Assigned to existing route: "${routeMatch.route.routeName}"`)
+          };
+          
+          if (routeMatch.created) {
+            console.log(`✅ Order ${order.orderId} assigned to NEW route "${routeMatch.route.routeName}" with hospital "${hospitalName}" as stop`);
+          } else if (routeMatch.stopAdded) {
+            console.log(`✅ Order ${order.orderId} assigned to EXISTING route "${routeMatch.route.routeName}" and hospital "${hospitalName}" added as stop`);
+          } else {
+            console.log(`✅ Order ${order.orderId} assigned to EXISTING route "${routeMatch.route.routeName}" (hospital "${hospitalName}" already in stops)`);
+          }
+        } else {
+          orderWithRouteInfo.routeAssignment = {
+            assigned: false,
+            reason: 'Failed to find or create route',
+            message: 'Unable to assign route. Please check delivery address and try again.'
+          };
+          console.log(`⚠️  Order ${order.orderId} not assigned: Failed to find or create route`);
+        }
+
+        createdOrders.push(orderWithRouteInfo);
       }
 
       res.status(201).json({
         status: true,
         message: 'Orders created successfully',
         orders: createdOrders,
+        summary: {
+          totalOrders: createdOrders.length,
+          assignedOrders: createdOrders.filter(o => o.routeAssignment.assigned).length,
+          unassignedOrders: createdOrders.filter(o => !o.routeAssignment.assigned).length
+        }
       });
     } catch (error) {
       console.error('Error creating orders:', error);
@@ -253,6 +306,42 @@ module.exports = {
       });
     } catch (error) {
       console.error('Error fetching recent orders:', error);
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  getRouteSuggestions: async (req, res) => {
+    try {
+      const { address, maxDistance = 30 } = req.query;
+      
+      if (!address) {
+        return res.status(400).json({
+          status: false,
+          message: 'Address parameter is required'
+        });
+      }
+
+      console.log(`🔍 Getting route suggestions for address: "${address}" within ${maxDistance}km`);
+
+      const suggestions = await getRouteSuggestions(address, parseInt(maxDistance));
+
+      res.status(200).json({
+        status: true,
+        address,
+        maxDistance: parseInt(maxDistance),
+        suggestionsCount: suggestions.length,
+        suggestions: suggestions.map(s => ({
+          routeId: s.route._id,
+          routeName: s.route.routeName,
+          distance: parseFloat(s.distance.toFixed(2)),
+          matchType: s.matchType,
+          matchLocation: s.matchDetails.description,
+          startLocation: s.route.startLocation,
+          endLocation: s.route.endLocation,
+          stopsCount: s.route.stops ? s.route.stops.length : 0
+        }))
+      });
+    } catch (error) {
+      console.error('Error getting route suggestions:', error);
       res.status(500).json({ status: false, message: error.message });
     }
   },
