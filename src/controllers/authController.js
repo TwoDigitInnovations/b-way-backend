@@ -2,6 +2,7 @@ const User = require('@models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const response = require('@responses');
+const mailNotification = require('@helpers/mailNotification');
 
 module.exports = {
   register: async (req, res) => {
@@ -262,6 +263,21 @@ module.exports = {
     } catch (error) {
       console.error('Error fetching users:', error);
       res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  sendInvitation: async(req, res) => {
+    try {
+      const { name, email, role } = req.body;
+
+      await mailNotification.inviteUser({ name, email });
+
+      res.status(200).json({
+        status: true,
+        message: "Invitation email sent successfully"
+      });
+    } catch (err) {
+      console.error('Error sending invitation:', err);
+      res.status(500).json({ status: false, message: err.message });
     }
   },
 };
