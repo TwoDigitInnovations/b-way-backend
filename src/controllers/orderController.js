@@ -1,6 +1,8 @@
 const Order = require('@models/Orders');
 const User = require('@models/User');
+const Billing = require("@models/Billing");
 const { findBestMatchingRoute, getRouteSuggestions, findOrCreateRouteForDelivery } = require('../helpers/routeMatching');
+const { default: courierGen } = require('@helpers/courier');
 
 // Helper function to get status color
 const getStatusColor = (status) => {
@@ -104,6 +106,21 @@ module.exports = {
         }
 
         createdOrders.push(orderWithRouteInfo);
+
+
+
+        // Billing
+        const billingData = {
+          order: order._id,
+          hospital: user,
+          courier: "#COU-434346863R",
+          invoiceDate: new Date(),
+          dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days later
+          amount: Number(item.price * item.qty),
+          status: 'Unpaid'
+        };
+
+        const newBilling = await Billing.create(billingData);
       }
 
       res.status(201).json({

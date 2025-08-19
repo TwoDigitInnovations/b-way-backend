@@ -3,13 +3,13 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const passport = require("passport");
-const connectDB = require("@config/db");
+const connectDB = require("./config/db");
 
 // Load environment variables
 require("dotenv").config();
 
 // Initialize Passport configuration
-require("@config/passport");
+require("./config/passport");
 
 // Initialize Express app
 const app = express();

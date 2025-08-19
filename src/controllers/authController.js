@@ -7,11 +7,11 @@ const mailNotification = require('@helpers/mailNotification');
 module.exports = {
   register: async (req, res) => {
     try {
-      const { name, email, password, phone, role } = req.body;
+      let { name, email, password, phone, role } = req.body;
 
-      if (!name || !email || !password) {
+      if (!name || !email || !password || !role) {
         return response.badReq(res, {
-          message: 'Name, email, and password are required',
+          message: 'Name, email, password, and role are required',
         });
       }
 
@@ -39,7 +39,7 @@ module.exports = {
         email,
         password: hashedPassword,
         phone,
-        role: role || 'USER',
+        role: role,
       });
 
       await newUser.save();
@@ -90,8 +90,12 @@ module.exports = {
           email: user.email,
           name: user.name,
           role: user.role,
-          ...(user.billing_Address && { billing_Address: user.billing_Address }),
-          ...(user.delivery_Address && { delivery_Address: user.delivery_Address }),
+          ...(user.billing_Address && {
+            billing_Address: user.billing_Address,
+          }),
+          ...(user.delivery_Address && {
+            delivery_Address: user.delivery_Address,
+          }),
           ...(user.phone && { phone: user.phone }),
         },
       });
@@ -265,19 +269,44 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
-  sendInvitation: async(req, res) => {
+  sendInvitation: async (req, res) => {
     try {
       const { name, email, role } = req.body;
 
-      await mailNotification.inviteUser({ name, email });
+      console.log('Sending invitation to:', name, email, role);
+
+      const token = jwt.sign({ name, email, role }, process.env.JWT_SECRET, {
+        expiresIn: '1h',
+      });
+
+      await mailNotification.inviteUser(name, email, token);
 
       res.status(200).json({
         status: true,
-        message: "Invitation email sent successfully"
+        message: 'Invitation email sent successfully',
       });
     } catch (err) {
       console.error('Error sending invitation:', err);
       res.status(500).json({ status: false, message: err.message });
+    }
+  },
+  validateInvitation: async (req, res) => {
+    const { token } = req.body;
+
+    if (!token) {
+      return res
+        .status(400)
+        .json({ status: false, message: 'Token is required' });
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      res
+        .status(200)
+        .json({ status: true, message: 'Valid token', user: decoded });
+    } catch (err) {
+      console.error('Error validating token:', err);
+      res.status(401).json({ status: false, message: 'Invalid token' });
     }
   },
 };

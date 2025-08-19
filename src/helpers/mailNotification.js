@@ -24,7 +24,7 @@ const sendMail = async (to, subject, html) => {
 };
 
 module.exports = {
-  inviteUser: async (name, email) => {
+  inviteUser: async (name, email, token) => {
     try {
       console.log("Sending invitation email to:", email);
 
@@ -38,13 +38,9 @@ module.exports = {
 
           <p>Dear ${name},</p>
 
-          <p>Thank you for creating your account at <strong>B-Way Logistic</strong>. We’re excited to be your trusted destination for quality products and service.</p>
+          <p>You are invited to join <strong>B-Way Logistic</strong>. We’re excited to be your trusted destination for quality service.</p>
 
-          <p><strong>Your registered email:</strong> ${email}</p>
-
-          <div style="background-color: #fef1e8; padding: 15px; border-left: 4px solid #F38529; margin: 20px 0; border-radius: 3px;">
-            <p style="margin: 0;">Enjoy a seamless shopping experience with our commitment to quality and customer satisfaction.</p>
-          </div>
+          <a href="${process.env.CLIENT_URL}/register?token=${token}">Register Yourself</a>
 
           <p>If you have any questions, feel free to reach out to us. We're here to help!</p>
 
@@ -57,7 +53,7 @@ module.exports = {
       </div>
     `;
 
-      await sendMail(username.email, "Welcome to B-Way Logistic!", html);
+      await sendMail(email, "Welcome to B-Way Logistic!", html);
     } catch (err) {
       console.error("Error sending welcome email:", err);
       throw new Error("Failed to send welcome email");
