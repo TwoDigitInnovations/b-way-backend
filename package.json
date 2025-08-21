@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-location": "^3.862.0",
+    "@aws-sdk/client-sqs": "^3.864.0",
     "@react-google-maps/api": "^2.20.7",
     "@turf/turf": "^7.2.0",
     "aws-sdk": "^2.1692.0",
@@ -44,7 +45,8 @@
     "multer": "^2.0.2",
     "nodemailer": "^7.0.5",
     "passport": "^0.7.0",
-    "passport-jwt": "^4.0.1"
+    "passport-jwt": "^4.0.1",
+    "socket.io": "^4.8.1"
   },
   "_moduleAliases": {
     "@config": "src/config",
@@ -53,6 +55,7 @@
     "@models": "src/models",
     "@routes": "src/routes",
     "@services": "src/services",
+    "@workers": "src/workers",
     "@responses": "src/helpers/responses",
     "@utils": "src/utils",
     "@helpers": "src/helpers"

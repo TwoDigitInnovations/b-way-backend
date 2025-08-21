@@ -10,7 +10,7 @@ router.put('/update-profile', auth("ADMIN", "CLIENT", "HOSPITAL", "DRIVER", "DIS
 router.get('/user-details', auth("ADMIN", "CLIENT", "HOSPITAL", "DRIVER", "DISPATCHER"), getUserDetails);
 router.post("/send-invitation", auth("ADMIN"), sendInvitation);
 router.post("/validate-invitation", auth("ADMIN"), validateInvitation);
-router.get('/:role', auth("ADMIN"), getUserByType);
-router.get('/all/:role', auth("ADMIN"), getUserList);
+router.get('/:role', auth(), getUserByType);
+router.get('/all/:role', auth(), getUserList);
 
 module.exports = router;

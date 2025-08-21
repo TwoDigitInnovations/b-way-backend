@@ -40,7 +40,7 @@ module.exports = {
 
           <p>You are invited to join <strong>B-Way Logistic</strong>. We’re excited to be your trusted destination for quality service.</p>
 
-          <a href="${process.env.CLIENT_URL}/register?token=${token}">Register Yourself</a>
+          <a href="${process.env.FRONTEND_URL}/register?token=${token}">Register Yourself</a>
 
           <p>If you have any questions, feel free to reach out to us. We're here to help!</p>
 

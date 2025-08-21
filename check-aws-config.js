@@ -9,8 +9,8 @@ const checkConfiguration = async () => {
 
   // Check environment variables
   const requiredEnvVars = [
-    'AWS_ACCESS_KEY',
-    'AWS_SECRET_KEY', 
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY', 
     'AWS_PLACE_INDEX',
     'AWS_CALCULATOR_NAME'
   ];
@@ -51,8 +51,8 @@ const checkConfiguration = async () => {
     const locationClient = new LocationClient({
       region: process.env.AWS_REGION || 'ap-south-1',
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY,
-        secretAccessKey: process.env.AWS_SECRET_KEY
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
       }
     });
 
@@ -95,8 +95,8 @@ const checkConfiguration = async () => {
       console.log('  - geo:CalculateRoute');
     } else if (error.name === 'CredentialsError') {
       console.log('\n💡 AWS credentials are invalid. Please check:');
-      console.log('  - AWS_ACCESS_KEY is correct');
-      console.log('  - AWS_SECRET_KEY is correct');
+      console.log('  - AWS_ACCESS_KEY_ID is correct');
+      console.log('  - AWS_SECRET_ACCESS_KEY is correct');
       console.log('  - Credentials are not expired');
     }
     

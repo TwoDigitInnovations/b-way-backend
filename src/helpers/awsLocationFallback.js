@@ -279,16 +279,16 @@ const checkAWSConfiguration = async () => {
   const config = {
     placeIndex: process.env.AWS_PLACE_INDEX,
     routeCalculator: process.env.AWS_CALCULATOR_NAME,
-    accessKey: process.env.AWS_ACCESS_KEY,
-    secretKey: process.env.AWS_SECRET_KEY,
+    accessKey: process.env.AWS_ACCESS_KEY_ID,
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY,
     region: process.env.AWS_REGION || 'ap-south-1'
   };
   
   const missing = [];
   if (!config.placeIndex) missing.push('AWS_PLACE_INDEX');
   if (!config.routeCalculator) missing.push('AWS_CALCULATOR_NAME');
-  if (!config.accessKey) missing.push('AWS_ACCESS_KEY');
-  if (!config.secretKey) missing.push('AWS_SECRET_KEY');
+  if (!config.accessKey) missing.push('AWS_ACCESS_KEY_ID');
+  if (!config.secretKey) missing.push('AWS_SECRET_ACCESS_KEY');
   
   if (missing.length > 0) {
     console.warn(`Missing AWS configuration: ${missing.join(', ')}`);

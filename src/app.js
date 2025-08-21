@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const passport = require("passport");
 const connectDB = require("./config/db");
+const socketService = require("./services/socketService");
 
 // Load environment variables
 require("dotenv").config();
@@ -25,6 +26,12 @@ app.use(morgan("dev"));
 
 // Initialize Passport
 app.use(passport.initialize());
+
+// Middleware to make socket service available in controllers
+app.use((req, res, next) => {
+  req.socketService = socketService;
+  next();
+});
 
 // Routes
 const routes = require('./routes');
