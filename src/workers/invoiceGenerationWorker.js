@@ -12,12 +12,10 @@ class InvoiceGenerationWorker {
     this.queueUrl = QUEUE_URLS.INVOICE_GENERATION;
     this.isRunning = false;
     this.maxRetries = 3;
-    this.pollInterval = 5000; // 5 seconds
+    this.pollInterval = 500; // Further reduced to 500ms for even faster processing
+    console.log(`🔧 Invoice Generation Worker initialized with queue: ${this.queueUrl}`);
   }
 
-  /**
-   * Start the worker to poll for invoice generation messages
-   */
   start() {
     if (this.isRunning) {
       console.log('🔄 Invoice Generation Worker is already running');
@@ -25,63 +23,86 @@ class InvoiceGenerationWorker {
     }
 
     this.isRunning = true;
-    console.log('🚀 Starting Invoice Generation Worker...');
+    console.log(`🚀 Starting Invoice Generation Worker with ${this.pollInterval}ms poll interval...`);
+    console.log(`📍 Polling queue: ${this.queueUrl}`);
     this.poll();
   }
 
-  /**
-   * Stop the worker
-   */
   stop() {
     this.isRunning = false;
     console.log('🛑 Invoice Generation Worker stopped');
   }
 
-  /**
-   * Poll SQS for messages
-   */
   async poll() {
+    let pollCount = 0;
+    const heartbeatInterval = 60;
+    
     while (this.isRunning) {
       try {
         await this.receiveAndProcessMessages();
+        
+        pollCount++;
+        if (pollCount % heartbeatInterval === 0) {
+          console.log(`💓 Invoice Worker Heartbeat: ${pollCount} polls completed, still running...`);
+        }
+        
         await new Promise((resolve) => setTimeout(resolve, this.pollInterval));
       } catch (error) {
         console.error('❌ Error in Invoice Generation Worker polling:', error);
         await new Promise((resolve) =>
-          setTimeout(resolve, this.pollInterval * 2),
-        ); // Wait longer on error
+          setTimeout(resolve, this.pollInterval),
+        );
       }
     }
   }
 
-  /**
-   * Receive and process messages from SQS
-   */
   async receiveAndProcessMessages() {
+    const pollStartTime = Date.now();
     try {
       const command = new ReceiveMessageCommand({
         QueueUrl: this.queueUrl,
         MaxNumberOfMessages: 10,
-        WaitTimeSeconds: 20, // Long polling
+        WaitTimeSeconds: 5,
+        VisibilityTimeoutSeconds: 30, 
         MessageAttributeNames: ['All'],
+        AttributeNames: ['All'],
       });
 
       const response = await sqsClient.send(command);
+      const pollDuration = Date.now() - pollStartTime;
 
       if (!response.Messages || response.Messages.length === 0) {
-        return; // No messages to process
+        if (pollDuration > 100) { 
+          console.log(`No messages found (poll took ${pollDuration}ms)`);
+        }
+        return;
       }
 
       console.log(
-        `📨 Received ${response.Messages.length} invoice generation messages`,
+        `📨 Received ${response.Messages.length} invoice generation messages (poll took ${pollDuration}ms)`,
       );
 
-      for (const message of response.Messages) {
-        await this.processMessage(message);
-      }
+      response.Messages.forEach((message, index) => {
+        try {
+          const messageBody = JSON.parse(message.Body);
+          const messageTimestamp = new Date(messageBody.timestamp);
+          const messageAge = Date.now() - messageTimestamp.getTime();
+          console.log(`📩 Message ${index + 1} age: ${messageAge}ms (sent at ${messageBody.timestamp})`);
+        } catch (e) {
+          console.log(`📩 Message ${index + 1}: Could not parse timestamp`);
+        }
+      });
+
+      // Process messages in parallel for better performance
+      const processingPromises = response.Messages.map(message => 
+        this.processMessage(message)
+      );
+      
+      await Promise.allSettled(processingPromises);
     } catch (error) {
+      const pollDuration = Date.now() - pollStartTime;
       console.error(
-        '❌ Error receiving messages from Invoice Generation queue:',
+        `❌ Error receiving messages from Invoice Generation queue (${pollDuration}ms):`,
         error,
       );
       throw error;
@@ -89,8 +110,10 @@ class InvoiceGenerationWorker {
   }
 
   async processMessage(message) {
+    let messageBody;
+    const startTime = Date.now();
     try {
-      const messageBody = JSON.parse(message.Body);
+      messageBody = JSON.parse(message.Body);
       console.log(
         `🔄 Processing invoice generation for order: ${messageBody.orderId}`,
       );
@@ -99,22 +122,30 @@ class InvoiceGenerationWorker {
 
       await this.deleteMessage(message.ReceiptHandle);
 
+      const processingTime = Date.now() - startTime;
       console.log(
-        `✅ Successfully processed invoice generation for order: ${messageBody.orderId}`,
+        `✅ Successfully processed invoice generation for order: ${messageBody.orderId} (${processingTime}ms)`,
       );
     } catch (error) {
-      console.error(`❌ Error processing invoice generation message:`, error);
+      const processingTime = Date.now() - startTime;
+      console.error(`❌ Error processing invoice generation message (${processingTime}ms):`, error);
 
-      const retryCount = messageBody.retryCount || 0;
-      if (retryCount < this.maxRetries) {
-        console.log(
-          `🔄 Retrying invoice generation (attempt ${retryCount + 1}/${this.maxRetries})`,
-        );
+      if (messageBody) {
+        const retryCount = messageBody.retryCount || 0;
+        if (retryCount < this.maxRetries) {
+          console.log(
+            `🔄 Retrying invoice generation (attempt ${retryCount + 1}/${this.maxRetries})`,
+          );
+          // Don't delete message - let it retry with shorter visibility timeout
+        } else {
+          console.error(
+            `💀 Max retries exceeded for invoice generation: ${messageBody.orderId}`,
+          );
+          await this.deleteMessage(message.ReceiptHandle);
+        }
       } else {
-        console.error(
-          `💀 Max retries exceeded for invoice generation: ${messageBody.orderId}`,
-        );
-        await this.deleteMessage(message.ReceiptHandle); // Remove from queue
+        console.log('🗑️ Deleting unparseable message');
+        await this.deleteMessage(message.ReceiptHandle);
       }
     }
   }
@@ -136,12 +167,15 @@ class InvoiceGenerationWorker {
       return;
     }
 
-    const order = await Order.findById(orderId);
+    const [order, hospital] = await Promise.all([
+      Order.findById(orderId),
+      User.findById(hospitalId)
+    ]);
+
     if (!order) {
       throw new Error(`Order not found: ${orderId}`);
     }
 
-    const hospital = await User.findById(hospitalId);
     if (!hospital) {
       throw new Error(`Hospital not found: ${hospitalId}`);
     }
@@ -149,21 +183,24 @@ class InvoiceGenerationWorker {
     const billingData = {
       order: orderId,
       hospital: hospitalId,
-      courier: courier,
       invoiceDate: new Date(invoiceDate),
       dueDate: new Date(dueDate),
       amount: amount,
       status: status || 'Unpaid',
-      createdAt: new Date(),
-      updatedAt: new Date(),
     };
 
-    const newBilling = await Billing.create(billingData);
+    if (courier) {
+      billingData.courier = courier;
+    }
 
-    await Order.findByIdAndUpdate(orderId, {
-      status: 'Invoice Generated',
-      updatedAt: new Date(),
-    });
+    // Create billing and update order in parallel
+    const [newBilling] = await Promise.all([
+      Billing.create(billingData),
+      Order.findByIdAndUpdate(orderId, {
+        status: 'Invoice Generated',
+        updatedAt: new Date(),
+      })
+    ]);
 
     console.log(
       `✅ Invoice generated for order ${order.orderId}: Billing ID ${newBilling._id}, Amount: $${amount}`,

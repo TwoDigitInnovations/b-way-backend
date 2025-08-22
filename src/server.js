@@ -11,11 +11,13 @@ const PORT = process.env.PORT || 8000;
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:3000",
+      "https://main.d2b0jf9k6u496r.amplifyapp.com"
+    ],
     methods: ["GET", "POST"]
   }
 });
-
 // Initialize socket service
 socketService.init(io);
 app.set('io', io);

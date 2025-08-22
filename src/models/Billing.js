@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+// Import Orders to ensure Counter model is registered
+require('./Orders');
+
 const billingSchema = new mongoose.Schema(
   {
     order: {
@@ -14,7 +17,7 @@ const billingSchema = new mongoose.Schema(
     },
     courier: {
       type: String,
-      required: true,
+      required: false,
     },
     invoiceDate: {
       type: Date,
@@ -53,7 +56,7 @@ billingSchema.pre('save', async function (next) {
       const Counter = mongoose.model('Counter');
       const counter = await Counter.findOneAndUpdate(
         { _id: 'billing' },
-        { $inc: { sequence: 1 } },
+        { $inc: { seq: 1 } },
         { new: true, upsert: true }
       );
       this.courier = `COU-${String(counter.seq).padStart(6, '0')}`;

@@ -1,11 +1,15 @@
 const Order = require('@models/Orders');
 const User = require('@models/User');
-const Billing = require("@models/Billing");
-const { findBestMatchingRoute, getRouteSuggestions, findOrCreateRouteForDelivery } = require('../helpers/routeMatching');
+const Item = require('@models/items');
+const Billing = require('@models/Billing');
+const {
+  findBestMatchingRoute,
+  getRouteSuggestions,
+  findOrCreateRouteForDelivery,
+} = require('../helpers/routeMatching');
 const { default: courierGen } = require('@helpers/courier');
 const sqsService = require('@services/sqsService');
 
-// Helper function to get status color
 const getStatusColor = (status) => {
   const statusColors = {
     Pending: 'bg-yellow-100 text-yellow-800',
@@ -34,7 +38,9 @@ module.exports = {
         });
       }
 
-      const userDetails = await User.findById(user).select('name delivery_Address');
+      const userDetails = await User.findById(user).select(
+        'name delivery_Address',
+      );
       if (!userDetails) {
         return res.status(404).json({
           status: false,
@@ -47,20 +53,25 @@ module.exports = {
       const invoiceGenerationMessages = [];
 
       for (const item of items) {
-        const staticPickupAddress = "160 W Forest Ave, Englewood";
+        const staticPickupAddress = '160 W Forest Ave, Englewood';
         const deliveryAddress = `${userDetails.delivery_Address.address}, ${userDetails.delivery_Address.city}, ${userDetails.delivery_Address.state} ${userDetails.delivery_Address.zipcode}`;
-        const hospitalName = userDetails.name || userDetails.name || `Hospital-${user.toString().slice(-6)}`;
+        const hospitalName =
+          userDetails.name ||
+          userDetails.name ||
+          `Hospital-${user.toString().slice(-6)}`;
 
-        console.log(`🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}"`);
+        console.log(
+          `🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}"`,
+        );
 
         // Create order
         const order = new Order({
           items: item.itemId,
           qty: item.qty,
           pickupLocation: {
-            address: "160 W Forest Ave",
-            city: "Englewood",
-            state: "NJ",
+            address: '160 W Forest Ave',
+            city: 'Englewood',
+            state: 'NJ',
           },
           deliveryLocation: userDetails.delivery_Address,
           user,
@@ -70,45 +81,68 @@ module.exports = {
 
         await order.save();
 
+        // Populate the order with item details for socket emission
+        const populatedOrder = await Order.findById(order._id)
+          .populate('items', 'name')
+          .lean();
+
         // Emit real-time order creation event
         try {
-          console.log('🔍 Checking socketService availability:', !!req.socketService);
+          console.log(
+            '🔍 Checking socketService availability:',
+            !!req.socketService,
+          );
           if (req.socketService) {
             console.log('📡 Emitting new order to admins and user...');
-            
+
             // Emit to admin users
             req.socketService.emitNewOrderToAdmins({
               _id: order._id,
               orderId: order.orderId,
-              items: item.itemId,
+              items: populatedOrder.items?.name || 'N/A',
               qty: item.qty,
               status: order.status,
               pickupLocation: order.pickupLocation,
               deliveryLocation: order.deliveryLocation,
               user: user,
               hospitalName: hospitalName,
-              createdAt: order.createdAt
+              facilityName: hospitalName, // Include facilityName for UI compatibility
+              assignedDriver: null,
+              route: null,
+              eta: null,
+              createdAt: order.createdAt,
             });
 
             // Emit to the specific user who created the order
-            req.socketService.emitOrderToUser(user, {
-              _id: order._id,
-              orderId: order.orderId,
-              items: item.itemId,
-              qty: item.qty,
-              status: order.status,
-              pickupLocation: order.pickupLocation,
-              deliveryLocation: order.deliveryLocation,
-              hospitalName: hospitalName,
-              createdAt: order.createdAt
-            }, 'new_order');
-            
+            req.socketService.emitOrderToUser(
+              user,
+              {
+                _id: order._id,
+                orderId: order.orderId,
+                items: populatedOrder.items?.name || 'N/A',
+                qty: item.qty,
+                status: order.status,
+                pickupLocation: order.pickupLocation,
+                deliveryLocation: order.deliveryLocation,
+                hospitalName: hospitalName,
+                facilityName: hospitalName, // Include facilityName for UI compatibility
+                assignedDriver: null,
+                route: null,
+                eta: null,
+                createdAt: order.createdAt,
+              },
+              'new_order',
+            );
+
             console.log('✅ Socket emissions completed');
           } else {
             console.error('❌ socketService not available in request context');
           }
         } catch (socketError) {
-          console.error('⚠️ Error emitting real-time order event:', socketError);
+          console.error(
+            '⚠️ Error emitting real-time order event:',
+            socketError,
+          );
           // Don't fail the request if socket emission fails
         }
 
@@ -117,7 +151,8 @@ module.exports = {
         orderWithRouteInfo.routeAssignment = {
           assigned: false,
           processing: true,
-          message: 'Route assignment is being processed asynchronously. You will be notified once completed.'
+          message:
+            'Route assignment is being processed asynchronously. You will be notified once completed.',
         };
 
         createdOrders.push(orderWithRouteInfo);
@@ -151,7 +186,7 @@ module.exports = {
               DataType: 'String',
               StringValue: 'ROUTE_ASSIGNMENT',
             },
-          }
+          },
         });
 
         // Prepare billing data for SQS
@@ -162,7 +197,7 @@ module.exports = {
           invoiceDate: new Date(),
           dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 days later
           amount: Number(item.price * item.qty),
-          status: 'Unpaid'
+          status: 'Unpaid',
         };
 
         // Prepare SQS message for invoice generation
@@ -197,69 +232,104 @@ module.exports = {
               DataType: 'String',
               StringValue: 'INVOICE_GENERATION',
             },
-          }
+          },
         });
 
-        console.log(`✅ Order ${order.orderId} created, queued for route assignment and invoice generation`);
+        console.log(
+          `✅ Order ${order.orderId} created, queued for route assignment and invoice generation`,
+        );
       }
 
       // Send messages to SQS queues asynchronously
       try {
-        console.log(`📤 Attempting to send ${routeAssignmentMessages.length} route assignment messages and ${invoiceGenerationMessages.length} invoice messages`);
-        
+        console.log(
+          `📤 Attempting to send ${routeAssignmentMessages.length} route assignment messages and ${invoiceGenerationMessages.length} invoice messages`,
+        );
+
         // Send route assignment messages
-        const routeAssignmentPromises = routeAssignmentMessages.map((msg, index) => {
-          console.log(`📝 Route message ${index + 1} data:`, JSON.stringify(msg.body, null, 2));
-          return sqsService.sendRouteAssignmentMessage(msg.body);
-        });
+        const routeAssignmentPromises = routeAssignmentMessages.map(
+          (msg, index) => {
+            console.log(
+              `📝 Route message ${index + 1} data:`,
+              JSON.stringify(msg.body, null, 2),
+            );
+            return sqsService.sendRouteAssignmentMessage(msg.body);
+          },
+        );
 
         // Send invoice generation messages
-        const invoiceGenerationPromises = invoiceGenerationMessages.map((msg, index) => {
-          console.log(`📝 Invoice message ${index + 1} data:`, JSON.stringify(msg.body, null, 2));
-          return sqsService.sendInvoiceGenerationMessage(msg.body);
-        });
+        const invoiceGenerationPromises = invoiceGenerationMessages.map(
+          (msg, index) => {
+            console.log(
+              `📝 Invoice message ${index + 1} data:`,
+              JSON.stringify(msg.body, null, 2),
+            );
+            return sqsService.sendInvoiceGenerationMessage(msg.body);
+          },
+        );
 
         // Execute all SQS operations in parallel
         const [routeResults, invoiceResults] = await Promise.allSettled([
           Promise.allSettled(routeAssignmentPromises),
-          Promise.allSettled(invoiceGenerationPromises)
+          Promise.allSettled(invoiceGenerationPromises),
         ]);
 
         // Log results with proper error handling
-        const routeSuccessful = routeResults.status === 'fulfilled' 
-          ? routeResults.value.filter(r => r.status === 'fulfilled').length 
-          : 0;
-        const routeFailed = routeResults.status === 'fulfilled' 
-          ? routeResults.value.filter(r => r.status === 'rejected').length 
-          : routeAssignmentMessages.length;
-        
-        const invoiceSuccessful = invoiceResults.status === 'fulfilled' 
-          ? invoiceResults.value.filter(r => r.status === 'fulfilled').length 
-          : 0;
-        const invoiceFailed = invoiceResults.status === 'fulfilled' 
-          ? invoiceResults.value.filter(r => r.status === 'rejected').length 
-          : invoiceGenerationMessages.length;
+        const routeSuccessful =
+          routeResults.status === 'fulfilled'
+            ? routeResults.value.filter((r) => r.status === 'fulfilled').length
+            : 0;
+        const routeFailed =
+          routeResults.status === 'fulfilled'
+            ? routeResults.value.filter((r) => r.status === 'rejected').length
+            : routeAssignmentMessages.length;
 
-        console.log(`📊 SQS Messages sent - Route Assignment: ${routeSuccessful} successful, ${routeFailed} failed`);
-        console.log(`📊 SQS Messages sent - Invoice Generation: ${invoiceSuccessful} successful, ${invoiceFailed} failed`);
+        const invoiceSuccessful =
+          invoiceResults.status === 'fulfilled'
+            ? invoiceResults.value.filter((r) => r.status === 'fulfilled')
+                .length
+            : 0;
+        const invoiceFailed =
+          invoiceResults.status === 'fulfilled'
+            ? invoiceResults.value.filter((r) => r.status === 'rejected').length
+            : invoiceGenerationMessages.length;
+
+        console.log(
+          `📊 SQS Messages sent - Route Assignment: ${routeSuccessful} successful, ${routeFailed} failed`,
+        );
+        console.log(
+          `📊 SQS Messages sent - Invoice Generation: ${invoiceSuccessful} successful, ${invoiceFailed} failed`,
+        );
 
         // Log detailed errors for debugging
         if (routeFailed > 0 && routeResults.status === 'fulfilled') {
-          const failures = routeResults.value.filter(r => r.status === 'rejected');
+          const failures = routeResults.value.filter(
+            (r) => r.status === 'rejected',
+          );
           failures.forEach((failure, index) => {
-            console.error(`❌ Route assignment message ${index + 1} failed:`, failure.reason);
+            console.error(
+              `❌ Route assignment message ${index + 1} failed:`,
+              failure.reason,
+            );
           });
         }
 
         if (invoiceFailed > 0 && invoiceResults.status === 'fulfilled') {
-          const failures = invoiceResults.value.filter(r => r.status === 'rejected');
+          const failures = invoiceResults.value.filter(
+            (r) => r.status === 'rejected',
+          );
           failures.forEach((failure, index) => {
-            console.error(`❌ Invoice generation message ${index + 1} failed:`, failure.reason);
+            console.error(
+              `❌ Invoice generation message ${index + 1} failed:`,
+              failure.reason,
+            );
           });
         }
-
       } catch (sqsError) {
-        console.error('⚠️ Error sending messages to SQS (orders still created):', sqsError);
+        console.error(
+          '⚠️ Error sending messages to SQS (orders still created):',
+          sqsError,
+        );
         // Orders are still created, but async processing might be affected
       }
 
@@ -270,13 +340,14 @@ module.exports = {
         summary: {
           totalOrders: createdOrders.length,
           processingAsync: true,
-          message: 'Route assignment and invoice generation are being processed in the background'
+          message:
+            'Route assignment and invoice generation are being processed in the background',
         },
         processing: {
           routeAssignment: 'queued',
           invoiceGeneration: 'queued',
-          estimatedProcessingTime: '1-2 minutes'
-        }
+          estimatedProcessingTime: '1-2 minutes',
+        },
       });
     } catch (error) {
       console.error('Error creating orders:', error);
@@ -289,7 +360,7 @@ module.exports = {
     const limitNum = parseInt(limit, 10);
     const skip = (pageNum - 1) * limitNum;
 
-    const {_id: userId, role } = req.user;
+    const { _id: userId, role } = req.user;
     const isAdmin = role === 'ADMIN';
     const isClient = role === 'CLIENT';
     const query = isAdmin || isClient ? {} : { user: userId };
@@ -374,7 +445,10 @@ module.exports = {
         req.params.id,
         { items, qty, pickupLocation, deliveryLocation, route, status, eta },
         { new: true },
-      ).populate('user', 'name email role').populate('items', 'name').populate('route', 'routeName');
+      )
+        .populate('user', 'name email role')
+        .populate('items', 'name')
+        .populate('route', 'routeName');
 
       if (!order) {
         return res
@@ -387,16 +461,20 @@ module.exports = {
         if (req.socketService && status && status !== previousStatus) {
           req.socketService.emitOrderStatusUpdate(order, previousStatus);
         }
-        
+
         if (req.socketService && route && route !== currentOrder.route) {
           // If route was assigned, emit route assignment event
-          const populatedRoute = await require('@models/Routes').findById(route);
+          const populatedRoute =
+            await require('@models/Routes').findById(route);
           if (populatedRoute) {
             req.socketService.emitRouteAssignment(order, populatedRoute);
           }
         }
       } catch (socketError) {
-        console.error('⚠️ Error emitting real-time order update event:', socketError);
+        console.error(
+          '⚠️ Error emitting real-time order update event:',
+          socketError,
+        );
         // Don't fail the request if socket emission fails
       }
 
@@ -515,24 +593,29 @@ module.exports = {
   getRouteSuggestions: async (req, res) => {
     try {
       const { address, maxDistance = 30 } = req.query;
-      
+
       if (!address) {
         return res.status(400).json({
           status: false,
-          message: 'Address parameter is required'
+          message: 'Address parameter is required',
         });
       }
 
-      console.log(`🔍 Getting route suggestions for address: "${address}" within ${maxDistance}km`);
+      console.log(
+        `🔍 Getting route suggestions for address: "${address}" within ${maxDistance}km`,
+      );
 
-      const suggestions = await getRouteSuggestions(address, parseInt(maxDistance));
+      const suggestions = await getRouteSuggestions(
+        address,
+        parseInt(maxDistance),
+      );
 
       res.status(200).json({
         status: true,
         address,
         maxDistance: parseInt(maxDistance),
         suggestionsCount: suggestions.length,
-        suggestions: suggestions.map(s => ({
+        suggestions: suggestions.map((s) => ({
           routeId: s.route._id,
           routeName: s.route.routeName,
           distance: parseFloat(s.distance.toFixed(2)),
@@ -540,8 +623,8 @@ module.exports = {
           matchLocation: s.matchDetails.description,
           startLocation: s.route.startLocation,
           endLocation: s.route.endLocation,
-          stopsCount: s.route.stops ? s.route.stops.length : 0
-        }))
+          stopsCount: s.route.stops ? s.route.stops.length : 0,
+        })),
       });
     } catch (error) {
       console.error('Error getting route suggestions:', error);

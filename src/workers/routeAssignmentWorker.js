@@ -2,6 +2,7 @@ const { ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client
 const { sqsClient, QUEUE_URLS } = require('@config/sqs');
 const Order = require('@models/Orders');
 const { findOrCreateRouteForDelivery } = require('@helpers/routeMatching');
+const socketService = require('@services/socketService');
 
 class RouteAssignmentWorker {
   constructor() {
@@ -133,13 +134,29 @@ class RouteAssignmentWorker {
 
     // Update order with route assignment
     if (routeMatch.route) {
-      await Order.findByIdAndUpdate(orderDbId, {
+      const updatedOrder = await Order.findByIdAndUpdate(orderDbId, {
         route: routeMatch.route._id,
         status: 'Scheduled',
         updatedAt: new Date()
-      });
+      }, { new: true })
+      .populate('user', 'name email role')
+      .populate('items', 'name')
+      .populate('route', 'routeName');
 
       console.log(`✅ Route assigned to order ${order.orderId}: "${routeMatch.route.routeName}"`);
+      
+      // Emit socket event for route assignment
+      try {
+        if (socketService && updatedOrder) {
+          console.log(`📡 Emitting route assignment event for order ${updatedOrder.orderId}`);
+          socketService.emitRouteAssignment(updatedOrder, routeMatch.route);
+        } else {
+          console.warn('⚠️ Socket service not available or order not found for route assignment notification');
+        }
+      } catch (socketError) {
+        console.error('❌ Error emitting route assignment socket event:', socketError);
+        // Don't fail the worker if socket emission fails
+      }
     } else {
       console.error(`❌ Failed to assign route to order ${order.orderId}`);
       throw new Error(`Failed to find or create route for order ${order.orderId}`);

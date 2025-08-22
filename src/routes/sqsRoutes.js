@@ -3,6 +3,8 @@ const router = express.Router();
 const workerManager = require('@workers/workerManager');
 const { sqsClient, QUEUE_URLS } = require('@config/sqs');
 const { GetQueueAttributesCommand } = require('@aws-sdk/client-sqs');
+const { PurgeQueueCommand } = require('@aws-sdk/client-sqs');
+
 
 router.get('/workers/status', async (req, res) => {
   try {
@@ -129,6 +131,65 @@ router.post('/workers/stop-all', async (req, res) => {
     res.status(500).json({
       status: false,
       message: 'Failed to stop all workers',
+      error: error.message
+    });
+  }
+});
+
+router.post('/queues/:queueName/purge', async (req, res) => {
+  try {
+    const { queueName } = req.params;
+    const queueUrl = QUEUE_URLS[queueName];
+
+    if (!queueUrl) {
+      return res.status(400).json({
+        status: false,
+        message: `Queue "${queueName}" not found in QUEUE_URLS`
+      });
+    }
+
+    const command = new PurgeQueueCommand({ QueueUrl: queueUrl });
+    await sqsClient.send(command);
+
+    res.json({
+      status: true,
+      message: `Queue "${queueName}" purged successfully`,
+      queueUrl
+    });
+  } catch (error) {
+    console.error(`Error purging queue ${req.params.queueName}:`, error);
+    res.status(500).json({
+      status: false,
+      message: `Failed to purge queue ${req.params.queueName}`,
+      error: error.message
+    });
+  }
+});
+
+router.post('/queues/purge-all', async (req, res) => {
+  try {
+    const results = [];
+
+    for (const [queueName, queueUrl] of Object.entries(QUEUE_URLS)) {
+      try {
+        const command = new PurgeQueueCommand({ QueueUrl: queueUrl });
+        await sqsClient.send(command);
+        results.push({ queueName, queueUrl, status: 'purged' });
+      } catch (err) {
+        results.push({ queueName, queueUrl, status: 'error', error: err.message });
+      }
+    }
+
+    res.json({
+      status: true,
+      message: 'All queues purge attempted',
+      results
+    });
+  } catch (error) {
+    console.error('Error purging all queues:', error);
+    res.status(500).json({
+      status: false,
+      message: 'Failed to purge all queues',
       error: error.message
     });
   }
