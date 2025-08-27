@@ -127,7 +127,7 @@ const complianceSchema = new mongoose.Schema({
     max: 100
   },
 
-  // Temperature monitoring and cold-chain compliance
+  // Temperature and cold-chain
   temperatureLogs: [temperatureLogSchema],
   coldChainCompliance: {
     totalMonitoredDeliveries: Number,
@@ -138,7 +138,7 @@ const complianceSchema = new mongoose.Schema({
     sensorCoveragePercentage: Number
   },
 
-  // Chain of custody tracking
+  // Chain of custody
   custodyLogs: [custodyLogSchema],
   chainOfCustodyCompliance: {
     completeDocumentationRate: Number,
@@ -147,7 +147,7 @@ const complianceSchema = new mongoose.Schema({
     gpsTrackingCoverage: Number
   },
 
-  // HIPAA specific compliance
+  // HIPAA
   hipaaCompliance: {
     patientDataEncrypted: { type: Boolean, default: true },
     accessLogsComplete: { type: Boolean, default: true },
@@ -157,7 +157,7 @@ const complianceSchema = new mongoose.Schema({
     auditTrailComplete: { type: Boolean, default: true }
   },
 
-  // FDA/USP compliance for pharmaceuticals
+  // FDA/USP
   fdaCompliance: {
     drugPedigreeComplete: { type: Boolean, default: true },
     serialNumberVerification: { type: Boolean, default: true },
@@ -166,7 +166,7 @@ const complianceSchema = new mongoose.Schema({
     adverseEventReporting: { type: Boolean, default: true }
   },
 
-  // Exception and violation details
+  // Exception and violation
   exceptions: [exceptionSchema],
   
   // Associated orders and routes

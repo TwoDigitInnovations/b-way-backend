@@ -2,52 +2,62 @@ const Item = require('@models/items');
 
 module.exports = {
   createItem: async (req, res) => {
-    try {
-      const {
-        name,
-        description,
-        price,
-        category,
-        stock,
-        dispatcher,
-        pickupLocation,
-      } = req.body;
+  try {
+    const {
+      name,
+      description,
+      price,
+      category,
+      stock,
+      dispatcher,
+      pickupLocation,
+    } = req.body;
 
-      if (
-        !name ||
-        !description ||
-        !price ||
-        !category ||
-        !stock ||
-        !pickupLocation
-      ) {
-        return res
-          .status(400)
-          .json({ status: false, message: 'All fields are required' });
-      }
-
-      const item = new Item({
-        name,
-        description,
-        price,
-        category,
-        stock,
-        dispatcher: dispatcher || req.user._id,
-        pickupLocation,
-      });
-
-      await item.save();
-
-      res.status(201).json({
-        status: true,
-        message: 'Item created successfully',
-        data: item,
-      });
-    } catch (error) {
-      console.error('Error fetching items:', error);
-      res.status(500).json({ status: false, message: error.message });
+    if (
+      !name ||
+      !description ||
+      !price ||
+      !category ||
+      !stock ||
+      !pickupLocation
+    ) {
+      return res
+        .status(400)
+        .json({ status: false, message: 'All fields are required' });
     }
-  },
+
+    let dispatcherField = null;
+
+    if (req.user.role === 'DISPATCHER') {
+      dispatcherField = dispatcher || req.user._id;
+    } else if (req.user.role === 'ADMIN' && dispatcher) {
+      dispatcherField = dispatcher;
+    } else {
+      dispatcherField = null;
+    }
+
+    const item = new Item({
+      name,
+      description,
+      price,
+      category,
+      stock,
+      dispatcher: dispatcherField,
+      pickupLocation,
+    });
+
+    await item.save();
+
+    res.status(201).json({
+      status: true,
+      message: 'Item created successfully',
+      data: item,
+    });
+  } catch (error) {
+    console.error('Error creating item:', error);
+    res.status(500).json({ status: false, message: error.message });
+  }
+},
 
   getItems: async (req, res) => {
     try {

@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['CLIENT', 'ADMIN', 'DRIVER', 'DISPATCHER', "HOSPITAL", "COURIER"],
+      enum: ['CLIENT', 'ADMIN', 'DRIVER', 'DISPATCHER', "HOSPITAL", "COURIER", "CLINIC"],
       default: 'USER',
     },
     // For hospital(user) to save their details

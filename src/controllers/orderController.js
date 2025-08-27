@@ -545,6 +545,27 @@ module.exports = {
       res.status(500).json({ status: false, message: error.message });
     }
   },
+  returnOrder: async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.id);
+      if (!order) {
+        return res
+          .status(404)
+          .json({ status: false, message: 'Order not found' });
+      }
+
+      order.status = 'Returned';
+      await order.save();
+
+      res.status(200).json({
+        status: true,
+        message: 'Order returned successfully',
+        data: order,
+      });
+    } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+    }
+  },
   getRecentOrders: async (req, res) => {
     try {
       const { limit = 6 } = req.query;

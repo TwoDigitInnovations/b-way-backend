@@ -56,7 +56,7 @@ io.on('connection', (socket) => {
       console.log(`Client room now has ${clientCount} users`);
     }
     
-    if (data.role === 'USER' || data.role === 'HOSPITAL') {
+    if (data.role === 'CLINIC' || data.role === 'HOSPITAL') {
       socket.join('hospital_room');
       console.log(`Hospital user joined hospital room`);
 

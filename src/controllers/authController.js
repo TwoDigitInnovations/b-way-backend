@@ -199,6 +199,21 @@ module.exports = {
       response.error(res, error);
     }
   },
+  getUserById: async (req, res) => {
+    try {
+      const userId = req.params.id;
+
+      const user = await User.findById(userId).select('-password');
+      if (!user) {
+        return response.notFound(res, { message: 'User not found' });
+      }
+
+      response.ok(res, { user });
+    } catch (error) {
+      console.error(error);
+      response.error(res, error);
+    }
+  },
   getUserByType: async (req, res) => {
     try {
       const { role } = req.params;

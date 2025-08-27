@@ -10,4 +10,5 @@ module.exports = (app) => {
   app.use('/billing', require("./routes/billingRoutes"));
   app.use('/payout', require("./routes/payoutRoutes"));
   app.use('/sqs', require("./routes/sqsRoutes"));
+  app.use('/dashboard', require("./routes/dashboardRoute"));
 };

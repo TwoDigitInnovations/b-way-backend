@@ -85,6 +85,7 @@ const orderSchema = new mongoose.Schema(
         'Invoice Generated',
         'Pending',
         'Picked Up',
+        'Returned'
       ],
       default: 'Pending',
     },
