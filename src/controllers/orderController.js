@@ -61,13 +61,18 @@ module.exports = {
           `Hospital-${user.toString().slice(-6)}`;
 
         console.log(
-          `🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}"`,
+          `🚀 Creating order from hospital: "${hospitalName}" → delivery: "${deliveryAddress}" | Urgency: ${item.deliveryUrgency || 'Stat'} | Temp: ${item.temperatureRequirements || 'Controlled'}`,
         );
 
         // Create order
         const order = new Order({
           items: item.itemId,
           qty: item.qty,
+          deliveryUrgency: item.deliveryUrgency || 'Stat',
+          scheduledDateTime: item.scheduledDateTime || null,
+          temperatureRequirements: item.temperatureRequirements || 'Controlled',
+          hipaaFdaCompliance: item.hipaaFdaCompliance || 'No',
+          description: item.description || 'No description provided',
           pickupLocation: {
             address: '160 W Forest Ave',
             city: 'Englewood',
@@ -101,6 +106,11 @@ module.exports = {
               orderId: order.orderId,
               items: populatedOrder.items?.name || 'N/A',
               qty: item.qty,
+              deliveryUrgency: order.deliveryUrgency,
+              scheduledDateTime: order.scheduledDateTime,
+              temperatureRequirements: order.temperatureRequirements,
+              hipaaFdaCompliance: order.hipaaFdaCompliance,
+              description: order.description,
               status: order.status,
               pickupLocation: order.pickupLocation,
               deliveryLocation: order.deliveryLocation,
@@ -121,6 +131,11 @@ module.exports = {
                 orderId: order.orderId,
                 items: populatedOrder.items?.name || 'N/A',
                 qty: item.qty,
+                deliveryUrgency: order.deliveryUrgency,
+                scheduledDateTime: order.scheduledDateTime,
+                temperatureRequirements: order.temperatureRequirements,
+                hipaaFdaCompliance: order.hipaaFdaCompliance,
+                description: order.description,
                 status: order.status,
                 pickupLocation: order.pickupLocation,
                 deliveryLocation: order.deliveryLocation,
@@ -169,6 +184,11 @@ module.exports = {
             deliveryLocation: order.deliveryLocation,
             items: order.items,
             qty: order.qty,
+            deliveryUrgency: order.deliveryUrgency,
+            scheduledDateTime: order.scheduledDateTime,
+            temperatureRequirements: order.temperatureRequirements,
+            hipaaFdaCompliance: order.hipaaFdaCompliance,
+            description: order.description,
             hospitalName: hospitalName,
             priority: 'normal',
             retryCount: 0,
@@ -185,6 +205,10 @@ module.exports = {
             MessageType: {
               DataType: 'String',
               StringValue: 'ROUTE_ASSIGNMENT',
+            },
+            DeliveryUrgency: {
+              DataType: 'String',
+              StringValue: order.deliveryUrgency,
             },
           },
         });
@@ -363,7 +387,8 @@ module.exports = {
     const { _id: userId, role } = req.user;
     const isAdmin = role === 'ADMIN';
     const isClient = role === 'CLIENT';
-    const query = isAdmin || isClient ? {} : { user: userId };
+    const isDispatcher = role === 'DISPATCHER';
+    const query = isAdmin || isClient || isDispatcher ? {} : { user: userId };
 
     // const match = {
     //   $or: [
@@ -424,6 +449,11 @@ module.exports = {
       const {
         items,
         qty,
+        deliveryUrgency,
+        scheduledDateTime,
+        temperatureRequirements,
+        hipaaFdaCompliance,
+        description,
         pickupLocation,
         deliveryLocation,
         route,
@@ -443,7 +473,20 @@ module.exports = {
 
       const order = await Order.findByIdAndUpdate(
         req.params.id,
-        { items, qty, pickupLocation, deliveryLocation, route, status, eta },
+        { 
+          items, 
+          qty, 
+          deliveryUrgency,
+          scheduledDateTime,
+          temperatureRequirements,
+          hipaaFdaCompliance,
+          description,
+          pickupLocation, 
+          deliveryLocation, 
+          route, 
+          status, 
+          eta 
+        },
         { new: true },
       )
         .populate('user', 'name email role')
@@ -650,6 +693,139 @@ module.exports = {
     } catch (error) {
       console.error('Error getting route suggestions:', error);
       res.status(500).json({ status: false, message: error.message });
+    }
+  },
+  
+  addTotesToOrder: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { totes } = req.body;
+
+      if (!totes || !Array.isArray(totes) || totes.length === 0) {
+        return res.status(400).json({
+          status: false,
+          message: 'Totes array is required and must not be empty',
+        });
+      }
+
+      for (const tote of totes) {
+        if (!tote.toteNumber || !tote.itemCount) {
+          return res.status(400).json({
+            status: false,
+            message: 'Each tote must have toteNumber and itemCount',
+          });
+        }
+        
+        if (isNaN(tote.itemCount) || parseInt(tote.itemCount) < 1) {
+          return res.status(400).json({
+            status: false,
+            message: 'Item count must be a positive number',
+          });
+        }
+      }
+
+      const toteNumbers = totes.map(tote => tote.toteNumber);
+      const duplicates = toteNumbers.filter((item, index) => toteNumbers.indexOf(item) !== index);
+      if (duplicates.length > 0) {
+        return res.status(400).json({
+          status: false,
+          message: `Duplicate tote numbers found: ${duplicates.join(', ')}`,
+        });
+      }
+
+      const order = await Order.findByIdAndUpdate(
+        id,
+        { 
+          totes: totes.map(tote => ({
+            toteNumber: tote.toteNumber.trim(),
+            itemCount: parseInt(tote.itemCount)
+          }))
+        },
+        { new: true }
+      )
+        .populate('user', 'name email role')
+        .populate('items', 'name')
+        .populate('route', 'routeName');
+
+      if (!order) {
+        return res.status(404).json({
+          status: false,
+          message: 'Order not found',
+        });
+      }
+
+      try {
+        if (req.socketService) {
+          const eventData = {
+            orderId: order.orderId,
+            orderDbId: order._id,
+            totes: order.totes,
+            totalTotes: order.totes.length,
+            totalItems: order.totes.reduce((sum, tote) => sum + tote.itemCount, 0),
+            timestamp: new Date().toISOString(),
+          };
+
+          await req.socketService.emitToAdmins('order-totes-added', eventData);
+          
+          console.log(`🔔 Real-time event emitted: Totes added to order ${order.orderId}`);
+        }
+      } catch (socketError) {
+        console.error('⚠️ Error emitting real-time totes update event:', socketError);
+      }
+
+      res.status(200).json({
+        status: true,
+        message: 'Totes added to order successfully',
+        data: order,
+        summary: {
+          totalTotes: order.totes.length,
+          totalItems: order.totes.reduce((sum, tote) => sum + tote.itemCount, 0),
+          totes: order.totes
+        }
+      });
+
+    } catch (error) {
+      console.error('Error adding totes to order:', error);
+      res.status(500).json({ 
+        status: false, 
+        message: error.message 
+      });
+    }
+  },
+  
+  getTotesForOrder: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const order = await Order.findById(id)
+        .select('orderId totes')
+        .lean();
+
+      if (!order) {
+        return res.status(404).json({
+          status: false,
+          message: 'Order not found',
+        });
+      }
+
+      const summary = {
+        orderId: order.orderId,
+        totalTotes: order.totes ? order.totes.length : 0,
+        totalItems: order.totes ? order.totes.reduce((sum, tote) => sum + tote.itemCount, 0) : 0,
+        totes: order.totes || []
+      };
+
+      res.status(200).json({
+        status: true,
+        data: summary
+      });
+
+    } catch (error) {
+      console.error('Error getting totes for order:', error);
+      res.status(500).json({ 
+        status: false, 
+        message: error.message 
+      });
     }
   },
 };

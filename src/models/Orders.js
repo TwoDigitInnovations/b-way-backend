@@ -29,6 +29,29 @@ const orderSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+    deliveryUrgency: {
+      type: String,
+      enum: ['Stat', 'Same-Day', 'Scheduled'],
+      default: 'Stat',
+    },
+    scheduledDateTime: {
+      type: Date,
+      required: false,
+    },
+    temperatureRequirements: {
+      type: String,
+      enum: ['Controlled', 'Room Temperature'],
+      default: 'Controlled',
+    },
+    hipaaFdaCompliance: {
+      type: String,
+      enum: ['Yes', 'No'],
+      default: 'No',
+    },
+    description: {
+      type: String,
+      default: 'No description provided',
+    },
     pickupLocation: {
       address: {
         type: String,
@@ -91,7 +114,18 @@ const orderSchema = new mongoose.Schema(
     },
     eta: {
       type: String,
-    }
+    },
+    totes: [{
+      toteNumber: {
+        type: String,
+        required: true,
+      },
+      itemCount: {
+        type: Number,
+        required: true,
+        min: 1,
+      }
+    }]
   },
   {
     timestamps: true,
